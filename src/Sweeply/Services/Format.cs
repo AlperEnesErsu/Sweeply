@@ -32,6 +32,25 @@ public static class Format
         return value.ToString(decimals == 1 ? "0.0" : "0", Tr) + " " + Units[unit];
     }
 
+    static readonly (string Prefix, string Token)[] PathTokens =
+    [
+        (Path.GetTempPath().TrimEnd('\\'), "%TEMP%"),
+        (Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "%LOCALAPPDATA%"),
+        (Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "%APPDATA%"),
+        (Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "~"),
+    ];
+
+    /// <summary>Uzun kullanıcı yollarını okunur kısaltmalarla gösterir (ör. %TEMP%\kurulum).</summary>
+    public static string ShortPath(string path)
+    {
+        foreach (var (prefix, token) in PathTokens)
+        {
+            if (prefix.Length > 0 && path.StartsWith(prefix + "\\", StringComparison.OrdinalIgnoreCase))
+                return token + path[prefix.Length..];
+        }
+        return path;
+    }
+
     public static string Duration(TimeSpan t) =>
         t.TotalDays >= 1 ? $"{(int)t.TotalDays} gün {t.Hours} sa" : $"{t.Hours} sa {t.Minutes} dk";
 

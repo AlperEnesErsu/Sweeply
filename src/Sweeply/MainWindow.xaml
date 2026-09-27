@@ -30,6 +30,14 @@
             </StackPanel>
             <DockPanel Grid.Column="1">
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="AdminButton" Style="{StaticResource TextButton}" Click="AdminButton_Click" Margin="0,0,2,0"
+                            AutomationProperties.Name="Yönetici olarak aç"
+                            ToolTip="Windows Update ve Teslim İyileştirme önbellekleri için yönetici izni gerekir">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE7EF;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" />
+                            <TextBlock Text="Yönetici olarak aç" />
+                        </StackPanel>
+                    </Button>
                     <Button x:Name="ShortcutButton" Style="{StaticResource TextButton}" Click="ShortcutButton_Click"
                             AutomationProperties.Name="Masaüstü kısayolu" ToolTip="Masaüstüne tek tıkla temizleyen bir kısayol ekler">
                         <StackPanel Orientation="Horizontal">
@@ -45,10 +53,17 @@
                         </StackPanel>
                     </Button>
                 </StackPanel>
-                <Button x:Name="SweepButton" Style="{StaticResource PrimaryButton}" MinWidth="150" HorizontalAlignment="Right"
-                        VerticalAlignment="Bottom" Margin="0,0,6,4" Click="SweepButton_Click" AutomationProperties.Name="Temizle">
-                    <TextBlock x:Name="SweepLabel" Text="Temizle" />
-                </Button>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,6,4">
+                    <Button x:Name="PreviewButton" Style="{StaticResource TextButton}" Padding="14,10" Margin="0,0,8,0"
+                            Click="PreviewButton_Click" AutomationProperties.Name="Neler silinecek?"
+                            ToolTip="Hiçbir şeyi silmeden, seçili görevlerin neyi sileceğini gösterir">
+                        <TextBlock x:Name="PreviewLabel" Text="Neler silinecek?" FontSize="13" />
+                    </Button>
+                    <Button x:Name="SweepButton" Style="{StaticResource PrimaryButton}" MinWidth="150"
+                            Click="SweepButton_Click" AutomationProperties.Name="Temizle">
+                        <TextBlock x:Name="SweepLabel" Text="Temizle" />
+                    </Button>
+                </StackPanel>
             </DockPanel>
         </Grid>
 
@@ -78,13 +93,18 @@
                         <TextBlock x:Name="UptimeSub" Style="{StaticResource Caption}" Margin="0,21,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                     </StackPanel>
                 </Border>
-                <Border Padding="24,16,32,16">
+                <Button x:Name="StartupButton" Style="{StaticResource CellButton}" Padding="24,16,32,16" Click="StartupButton_Click"
+                        AutomationProperties.Name="Başlangıç programlarını göster">
                     <StackPanel>
-                        <TextBlock Text="Başlangıç programları" Style="{StaticResource Label}" />
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right" Text="&#xE76C;" Style="{StaticResource Icon}" FontSize="10"
+                                       Foreground="{StaticResource Subtle}" />
+                            <TextBlock Text="Başlangıç programları" Style="{StaticResource Label}" />
+                        </DockPanel>
                         <TextBlock x:Name="StartupText" Style="{StaticResource Metric}" />
                         <TextBlock x:Name="StartupSub" Style="{StaticResource Caption}" Margin="0,21,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                     </StackPanel>
-                </Border>
+                </Button>
             </UniformGrid>
         </Border>
 
@@ -103,6 +123,16 @@
                 </DockPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ItemsControl x:Name="TasksList" Margin="0,0,12,0">
+                        <ItemsControl.GroupStyle>
+                            <GroupStyle>
+                                <GroupStyle.HeaderTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource Label}" FontSize="11.5"
+                                                   Foreground="{StaticResource Subtle}" Margin="0,14,0,0" />
+                                    </DataTemplate>
+                                </GroupStyle.HeaderTemplate>
+                            </GroupStyle>
+                        </ItemsControl.GroupStyle>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border Padding="0,12" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
@@ -150,6 +180,10 @@
                                     <DataTrigger Binding="{Binding State}" Value="Done">
                                         <Setter TargetName="StatusLine" Property="Visibility" Value="Visible" />
                                         <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding State}" Value="Skipped">
+                                        <Setter TargetName="StatusLine" Property="Visibility" Value="Visible" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource Muted}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding State}" Value="Failed">
                                         <Setter TargetName="StatusLine" Property="Visibility" Value="Visible" />

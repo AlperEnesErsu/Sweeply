@@ -100,6 +100,23 @@ public class FileCleanerTests
     {
         Assert.Equal("Silinecek dosya yoktu", FileCleaner.Describe(new CleanStats { KeptNew = 2924 }));
         Assert.Equal("5 KB silindi", FileCleaner.Describe(new CleanStats { Freed = 5000, Deleted = 3, KeptNew = 10 }));
+        Assert.Equal("Durduruldu", FileCleaner.Describe(new CleanStats { Cancelled = true }));
+        Assert.Equal("5 KB silindi · durduruldu", FileCleaner.Describe(new CleanStats { Freed = 5000, Cancelled = true }));
+    }
+
+    [Fact]
+    public void Clean_StopsWhenCancelled()
+    {
+        using var dir = new TempDir();
+        var file = dir.File("a.tmp", 10, TimeSpan.FromDays(2));
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var stats = FileCleaner.Clean(dir.Path, default, null, cts.Token);
+
+        Assert.True(stats.Cancelled);
+        Assert.Equal(0, stats.Deleted);
+        Assert.True(File.Exists(file));
     }
 
     [Fact]

@@ -4,7 +4,8 @@ using Sweeply.Tasks;
 
 namespace Sweeply.Models;
 
-public enum ItemState { Idle, Running, Done, Failed }
+/// <summary>Skipped: kullanıcı temizliği durdurduğu için bu görev hiç çalıştırılmadı.</summary>
+public enum ItemState { Idle, Running, Done, Failed, Skipped }
 
 /// <summary>Arayüzdeki bir temizlik satırı: görevin kendisi, seçili olup olmadığı ve son analiz/çalıştırma sonucu.</summary>
 public sealed class CleanupItem : INotifyPropertyChanged
@@ -18,6 +19,15 @@ public sealed class CleanupItem : INotifyPropertyChanged
     public ICleanupTask Job { get; }
     public string Title => Job.Title;
     public string Description => Job.Description;
+
+    /// <summary>Listede bölüm başlığı olarak gösterilir; sıralama <see cref="TaskGroup"/> sırasını izler.</summary>
+    public string GroupName => Job.Group switch
+    {
+        TaskGroup.System => "Sistem",
+        TaskGroup.Apps => "Tarayıcılar ve uygulamalar",
+        TaskGroup.Developer => "Geliştirici",
+        _ => "Bellek",
+    };
 
     bool _isEnabled;
     public bool IsEnabled { get => _isEnabled; set => Set(ref _isEnabled, value); }

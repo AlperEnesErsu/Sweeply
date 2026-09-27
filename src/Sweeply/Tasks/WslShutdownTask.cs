@@ -12,6 +12,7 @@ public sealed class WslShutdownTask : ICleanupTask
     public string Title => "WSL ve Docker'ı kapat";
     public string Description => "Kullanmıyorsanız WSL sanal makinesini ve Docker Desktop'ı kapatarak RAM'i geri alır. Çalışan konteynerler durur.";
     public TaskKind Kind => TaskKind.Ram;
+    public TaskGroup Group => TaskGroup.Memory;
     public bool EnabledByDefault => false;
 
     /// <summary>vmmem işlemlerinin kullandığı RAM. İşlem var ama belleği okunamıyorsa -1.</summary>
@@ -41,7 +42,11 @@ public sealed class WslShutdownTask : ICleanupTask
             : new Analysis(true, bytes, "Çalışan Docker konteynerleri de durur.");
     }, ct);
 
-    public async Task<TaskResult> RunAsync(CancellationToken ct)
+    public Task<Preview> PreviewAsync(CancellationToken ct) =>
+        Task.FromResult(new Preview([new PreviewEntry("docker desktop stop, wsl --shutdown", Math.Max(0, VmMemory()), 0, IsCommand: true)],
+            "Dosya silinmez; WSL sanal makinesi kapatılır ve kullandığı RAM boşalır."));
+
+    public async Task<TaskResult> RunAsync(IProgress<CleanProgress>? progress, CancellationToken ct)
     {
         long before = VmMemory();
 
@@ -52,7 +57,7 @@ public sealed class WslShutdownTask : ICleanupTask
         var shutdown = await CommandRunner.RunAsync("wsl.exe", "--shutdown", TimeSpan.FromSeconds(60), ct);
         if (shutdown.ExitCode != 0) return new TaskResult(0, "WSL kapatılamadı");
 
-        await Task.Delay(TimeSpan.FromSeconds(2), ct);
+        await Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None);
         long freed = before > 0 ? Math.Max(0, before - Math.Max(0, VmMemory())) : 0;
         return new TaskResult(freed, freed > 0 ? $"{Format.Bytes(freed)} RAM boşaldı" : "WSL kapatıldı");
     }

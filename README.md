@@ -22,20 +22,28 @@ Sweeply bunun yerine **gerçekten fark yaratan** işleri yapar:
 
 ## Temizlik görevleri
 
-| Görev | Ne yapar | Varsayılan |
-|---|---|---|
-| Geçici dosyalar | Kullanıcı ve Windows Temp klasörlerindeki **24 saatten eski** dosyaları siler. Kullanımdaki dosyalar atlanır. | ✅ |
-| Tarayıcı önbellekleri | Chrome, Edge ve Brave'in `Cache`, `Code Cache` ve `GPUCache` klasörlerini temizler. Geçmiş, şifreler ve çerezler **silinmez**. Açık tarayıcılar atlanır. | ✅ |
-| Geliştirici önbellekleri | npm (`npm cache clean --force`) ve pip önbelleklerini temizler. | ✅ |
-| Çökme dökümleri | `CrashDumps` ve Windows hata raporu arşivini temizler. | ✅ |
-| Docker build cache | Sadece `docker builder prune -a` çalıştırır. **İmajlara, konteynerlere ve volume'lara dokunmaz.** | ✅ |
-| WSL ve Docker'ı kapat | `wsl --shutdown` ile birkaç GB RAM geri kazandırır. Çalışan konteynerler durur. | ⬜ |
+| Bölüm | Görev | Ne yapar | Varsayılan |
+|---|---|---|---|
+| Sistem | Geçici dosyalar | Kullanıcı ve Windows Temp klasörlerindeki **24 saatten eski** dosyalar. Kullanımdaki dosyalar atlanır. | ✅ |
+| Sistem | Çökme dökümleri | `CrashDumps` ve Windows hata raporu arşivi. | ✅ |
+| Sistem | Windows Update önbelleği 🛡 | `SoftwareDistribution\Download`. Temizlik sırasında Windows Update servisi kısa süre durdurulur, sonra yeniden başlatılır. | ✅ |
+| Sistem | Teslim İyileştirme 🛡 | `Delete-DeliveryOptimizationCache` ile Windows'un güncelleme paylaşım önbelleği. | ✅ |
+| Uygulamalar | Tarayıcı önbellekleri | Chrome, Edge, Brave, Vivaldi, Opera, Opera GX ve Firefox. Sadece `Cache`, `Code Cache`, `GPUCache` ve Firefox'un `cache2` klasörü; geçmiş, şifreler ve çerezler **silinmez**. | ✅ |
+| Uygulamalar | Uygulama önbellekleri | Discord, Slack ve VS Code önbellekleri. Oturumlar ve ayarlar silinmez. | ✅ |
+| Uygulamalar | Spotify önbelleği | Birkaç GB olabilir; ancak indirilen (çevrimdışı) şarkılar da aynı klasörde durabildiği için varsayılan olarak kapalı. | ⬜ |
+| Geliştirici | Paket yöneticisi önbellekleri | npm, Yarn, pnpm (`store prune`, sadece kullanılmayan paketler), pip ve NuGet indirme önbelleği. | ✅ |
+| Geliştirici | Derleme paket depoları | `~/.nuget/packages`, Gradle, Cargo (`registry` ve `git`; `~/.cargo/bin` korunur) ve Go. Sonraki derleme her şeyi yeniden indirir. | ⬜ |
+| Geliştirici | Docker build cache | Sadece `docker builder prune -a`. **İmajlara, konteynerlere ve volume'lara dokunmaz.** | ✅ |
+| Bellek | WSL ve Docker'ı kapat | `wsl --shutdown` ile birkaç GB RAM geri kazandırır. Çalışan konteynerler durur. | ⬜ |
 
+🛡 Yönetici izni gerekir: uygulamadaki **Yönetici olarak aç** ile yeniden başlatın. Bu görevler yönetici olmadan da boyutlarını gösterir ama hiçbir şey silmez.
+
+Açık olan bir tarayıcının veya uygulamanın önbelleği o turda atlanır. **Neler silinecek?** butonu, hiçbir şey silmeden hangi klasörlerin ne kadar yer kapladığını ve hangi komutların çalışacağını listeler. Temizlik sırasında canlı ilerleme görünür ve **Durdur** ile istediğiniz an kesebilirsiniz.
 Geri Dönüşüm Kutusu, İndirilenler klasörü ve kişisel dosyalar **hiçbir zaman** silinmez. Junction ve sembolik bağlantıların içine girilmez, yani temizlik hedef klasörün dışına taşamaz.
 
 ## Kurulum
 
-**Hazır sürüm:** [Releases](../../releases) sayfasından `Sweeply.exe` dosyasını indirin. [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) gerekir.
+**Hazır sürüm:** [Releases](../../releases) sayfasından `Sweeply.exe` dosyasını indirip çalıştırın. Tek dosyadır, .NET kurmanız gerekmez.
 
 **Kaynaktan kurulum** (.NET 8 SDK gerekir):
 
@@ -53,7 +61,7 @@ Bu betik uygulamayı `%LOCALAPPDATA%\Programs\Sweeply` klasörüne kurar ve masa
 - Uygulamayı normal açarsanız önce analiz sonuçlarını görürsünüz. İstediğiniz görevleri işaretleyip **Temizle** butonuna basarsınız.
 - Kısayolu uygulama içinden de oluşturabilirsiniz: **Masaüstü kısayolu**.
 
-Yönetici izni gerekmez. Yönetici yetkisi gerektiren dosyalar (ör. bazı `C:\Windows\Temp` içerikleri) sessizce atlanır. Windows'ta "Animasyon efektleri" kapalıysa uygulamadaki animasyonlar da kapanır.
+Normalde yönetici izni gerekmez; yönetici yetkisi gerektiren dosyalar (ör. bazı `C:\Windows\Temp` içerikleri) sessizce atlanır. **Başlangıç programları** alanına tıklayınca açılışta çalışan programlar listelenir ve Görev Yöneticisi'nin Başlangıç sekmesi tek tıkla açılır. Windows'ta "Animasyon efektleri" kapalıysa uygulamadaki animasyonlar da kapanır.
 
 ## İpucu: Docker'ın kapladığı alanı Windows'a geri vermek
 
@@ -94,7 +102,7 @@ Testler dosya silme algoritmalarını her seferinde yeni oluşturulan geçici kl
 - İşlem gruplama
 - Komut zaman aşımı
 
-Yeni bir temizlik görevi eklemek için `src/Sweeply/Tasks` altında `ICleanupTask` arayüzünü uygulayan bir sınıf yazın ve `MainWindow.xaml.cs` içindeki listeye ekleyin. Uygulama ikonu `tools/make-icon.ps1` ile üretilir.
+Yeni bir önbellek eklemek çoğu zaman tek satırdır: `src/Sweeply/Tasks/Catalog.cs` içinde ilgili göreve bir `CacheApp` (uygulama adı, açıkken atlanacak işlemler, klasörler veya temizleme komutu) ekleyin. Analiz, önizleme, iptal ve ilerleme otomatik gelir. Tek dosyalık exe için: `dotnet publish src/Sweeply/Sweeply.csproj -p:PublishProfile=win-x64`. Uygulama ikonu `tools/make-icon.ps1` ile üretilir.
 
 ## Lisans
 

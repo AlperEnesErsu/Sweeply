@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Sweeply.Controls;
@@ -17,6 +19,7 @@ public partial class MainWindow : Window
     readonly ObservableCollection<ProcessGroup> _processes = new();
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(3) };
     readonly bool _autoRun;
+    CancellationTokenSource? _cts;
     bool _busy;
     bool _showingResult;
     int _tick;
@@ -26,24 +29,24 @@ public partial class MainWindow : Window
         InitializeComponent();
         _autoRun = autoRun;
 
-        ICleanupTask[] jobs =
-        [
-            new TempFilesTask(),
-            new BrowserCacheTask(),
-            new DevCachesTask(),
-            new CrashDumpsTask(),
-            new DockerBuildCacheTask(),
-            new WslShutdownTask(),
-        ];
-        foreach (var job in jobs)
+        foreach (var job in Catalog.All())
         {
             var item = new CleanupItem(job);
             item.PropertyChanged += OnItemChanged;
             _items.Add(item);
         }
 
-        TasksList.ItemsSource = _items;
+        // Görevler katalogda zaten grup sırasıyla dizili; başlıklar ilk görünüş sırasını izler.
+        var view = CollectionViewSource.GetDefaultView(_items);
+        view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(CleanupItem.GroupName)));
+        TasksList.ItemsSource = view;
         ProcList.ItemsSource = _processes;
+
+        if (Elevation.IsAdmin)
+        {
+            AdminButton.Visibility = Visibility.Collapsed;
+            Title = "Sweeply (Yönetici)";
+        }
         UpdateSelection();
 
         _timer.Tick += async (_, _) =>
@@ -69,7 +72,7 @@ public partial class MainWindow : Window
         if (_autoRun) await SweepAsync();
     }
 
-    /// <summary>Sadece açılışta: ölçümler ve görev satırları kısa aralıklarla sırayla belirir.</summary>
+    /// <summary>Sadece açılışta: ölçümler ve görev grupları kısa aralıklarla sırayla belirir.</summary>
     void PlayEntrance()
     {
         Motion.FadeUp(Hero);
@@ -78,13 +81,12 @@ public partial class MainWindow : Window
 
         Dispatcher.InvokeAsync(() =>
         {
-            for (int row = 0; row < _items.Count; row++)
-            {
-                if (TasksList.ItemContainerGenerator.ContainerFromIndex(row) is UIElement container)
-                    Motion.FadeUp(container, 180 + row * 40);
-            }
+            for (int group = 0; TasksList.ItemContainerGenerator.ContainerFromIndex(group) is UIElement container; group++)
+                Motion.FadeUp(container, 180 + group * 60);
         }, DispatcherPriority.Loaded);
     }
+
+    List<CleanupItem> Selected() => _items.Where(i => i.IsEnabled && i.IsAvailable).ToList();
 
     void OnItemChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -92,12 +94,13 @@ public partial class MainWindow : Window
             UpdateSelection();
     }
 
-    /// <summary>Seçim değişince buton durumu, seçili sayısı ve (sonuç gösterilmiyorsa) başlıktaki tahmin güncellenir.</summary>
+    /// <summary>Seçim değişince butonlar, seçili sayısı ve (sonuç gösterilmiyorsa) başlıktaki tahmin güncellenir.</summary>
     void UpdateSelection()
     {
-        var selected = _items.Where(i => i.IsEnabled && i.IsAvailable).ToList();
+        var selected = Selected();
         SelectedCount.Text = $"{selected.Count} / {_items.Count} seçili";
-        SweepButton.IsEnabled = !_busy && selected.Count > 0;
+        SweepButton.IsEnabled = _busy || selected.Count > 0;  // çalışırken "Durdur" olarak kullanılır
+        PreviewButton.IsEnabled = !_busy && selected.Count > 0;
 
         if (_busy || _showingResult) return;
         long disk = selected.Where(i => i.Job.Kind == TaskKind.Disk).Sum(i => Math.Max(0, i.Bytes));
@@ -124,7 +127,7 @@ public partial class MainWindow : Window
         ShowNote(null, UptimeSub, HealthTips.Uptime(s), "son açılıştan beri");
 
         StartupText.Text = s.StartupCount.ToString();
-        ShowNote(null, StartupSub, HealthTips.Startup(s), "açılışta çalışan program");
+        ShowNote(null, StartupSub, HealthTips.Startup(s), "listeyi görmek için tıklayın");
     }
 
     /// <summary>Ölçümün alt satırı: sorun varsa sarı uyarı (çubuk da sarı), yoksa sakin bir açıklama.</summary>
@@ -164,15 +167,20 @@ public partial class MainWindow : Window
         item.IsAvailable = analysis.Available;
         item.Bytes = analysis.Bytes;
         item.Note = analysis.Note;
-        item.Estimate = !analysis.Available ? "—" : analysis.Bytes < 0 ? "?" : Format.Bytes(analysis.Bytes);
+        // Yönetici izni bekleyen görevlerde de boyut gösterilir: kullanıcı neyi kaçırdığını görsün.
+        item.Estimate = analysis.Bytes < 0 ? "?"
+            : !analysis.Available && analysis.Bytes == 0 ? "—"
+            : Format.Bytes(analysis.Bytes);
     }
 
     async Task SweepAsync()
     {
         if (_busy) return;
-        var queue = _items.Where(i => i.IsEnabled && i.IsAvailable).ToList();
+        var queue = Selected();
         if (queue.Count == 0) return;
 
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
         SetBusy(true);
         foreach (var item in _items)
         {
@@ -181,6 +189,7 @@ public partial class MainWindow : Window
         }
 
         HeadlineCaption.Text = "Temizleniyor";
+        HeadlineValue.Foreground = Res("Text");
         RunProgress.Value = 0;
         RunProgress.Visibility = Visibility.Visible;
         long disk = 0, ram = 0;
@@ -188,28 +197,57 @@ public partial class MainWindow : Window
         for (int i = 0; i < queue.Count; i++)
         {
             var item = queue[i];
+            if (ct.IsCancellationRequested)
+            {
+                item.State = ItemState.Skipped;
+                item.Status = "Durduruldu; çalıştırılmadı";
+                continue;
+            }
+
             item.State = ItemState.Running;
             item.Status = "temizleniyor…";
             HeadlineSub.Text = $"{item.Title} ({i + 1}/{queue.Count})";
+
+            // Görev bittikten sonra kuyrukta kalan ilerleme bildirimleri sonucu ezmesin diye.
+            bool live = true;
+            long diskBefore = disk;
+            var progress = new Progress<CleanProgress>(p =>
+            {
+                if (!live) return;
+                if (item.Job.Kind == TaskKind.Disk) HeadlineValue.Text = Format.Bytes(diskBefore + p.Bytes);
+                HeadlineSub.Text = p.Files > 0
+                    ? $"{item.Title} · {p.Files:N0} dosya · {Format.Bytes(p.Bytes)}"
+                    : $"{item.Title} · {Format.Bytes(p.Bytes)}";
+            });
+
             try
             {
-                var result = await item.Job.RunAsync(CancellationToken.None);
+                var result = await item.Job.RunAsync(progress, ct);
                 item.Status = result.Message;
                 item.State = ItemState.Done;
                 if (item.Job.Kind == TaskKind.Ram) ram += result.FreedBytes;
                 else disk += result.FreedBytes;
+            }
+            catch (OperationCanceledException)
+            {
+                item.Status = "Durduruldu";
+                item.State = ItemState.Skipped;
             }
             catch (Exception ex)
             {
                 item.Status = ex.Message;
                 item.State = ItemState.Failed;
             }
+            live = false;
+            HeadlineValue.Text = Format.Bytes(disk);
             RunProgress.Value = 100.0 * (i + 1) / queue.Count;
         }
 
         RunProgress.Visibility = Visibility.Collapsed;
         _showingResult = true;
-        await ShowResultAsync(disk, ram);
+        ShowResult(disk, ram, ct.IsCancellationRequested);
+        _cts.Dispose();
+        _cts = null;
 
         UpdateHealth();
         await RefreshProcessesAsync();
@@ -218,8 +256,16 @@ public partial class MainWindow : Window
         await AnalyzeAsync();
     }
 
-    async Task ShowResultAsync(long disk, long ram)
+    void ShowResult(long disk, long ram, bool cancelled)
     {
+        if (cancelled)
+        {
+            HeadlineCaption.Text = "Durduruldu";
+            HeadlineValue.Text = Format.Bytes(disk);
+            HeadlineValue.Foreground = Res(disk > 0 ? "Good" : "Text");
+            HeadlineSub.Text = "O ana kadar silinenler silindi; kalan görevler çalıştırılmadı.";
+            return;
+        }
         if (disk == 0 && ram == 0)
         {
             HeadlineCaption.Text = "Sonuç";
@@ -229,22 +275,107 @@ public partial class MainWindow : Window
         }
 
         HeadlineCaption.Text = "Temizlendi";
+        HeadlineValue.Text = Format.Bytes(disk);
         HeadlineValue.Foreground = Res("Good");
         HeadlineSub.Text = ram > 0
             ? $"disk alanı açıldı · ayrıca {Format.Bytes(ram)} RAM boşaldı"
             : "disk alanı açıldı · ayrıntılar her görevin altında";
-        await Motion.CountUpAsync(HeadlineValue, disk, Format.Bytes);
     }
 
     void SetBusy(bool busy)
     {
         _busy = busy;
         RefreshButton.IsEnabled = !busy;
-        if (busy) SweepLabel.Text = "Temizleniyor…";
+        if (busy) SweepLabel.Text = "Durdur";
         UpdateSelection();
     }
 
-    async void SweepButton_Click(object sender, RoutedEventArgs e) => await SweepAsync();
+    async void SweepButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy)
+        {
+            _cts?.Cancel();
+            SweepLabel.Text = "Durduruluyor…";
+            SweepButton.IsEnabled = false;
+            return;
+        }
+        await SweepAsync();
+    }
+
+    async void PreviewButton_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = Selected();
+        PreviewButton.IsEnabled = false;
+        PreviewLabel.Text = "Hazırlanıyor…";
+
+        const int PerTask = 12;
+        var rows = new List<ListRow>();
+        long total = 0;
+        foreach (var item in selected)
+        {
+            Preview preview;
+            try { preview = await item.Job.PreviewAsync(CancellationToken.None); }
+            catch (Exception ex) { preview = new Preview([], ex.Message); }
+
+            long sum = preview.Entries.Sum(x => x.Bytes);
+            if (item.Job.Kind == TaskKind.Disk) total += sum;
+            rows.Add(new ListRow(item.Title, preview.Note, Format.Bytes(sum), IsHeader: true));
+
+            if (preview.Entries.Count == 0) rows.Add(new ListRow("Silinecek bir şey yok"));
+            foreach (var entry in preview.Entries.Take(PerTask))
+            {
+                rows.Add(entry.IsCommand
+                    ? new ListRow("Komut: " + entry.Label, "Aracın kendi temizleme komutu çalıştırılır", Format.Bytes(entry.Bytes))
+                    : new ListRow(Format.ShortPath(entry.Label), $"{entry.Files:N0} dosya", Format.Bytes(entry.Bytes)));
+            }
+            var rest = preview.Entries.Skip(PerTask).ToList();
+            if (rest.Count > 0)
+                rows.Add(new ListRow($"ve {rest.Count:N0} öğe daha", $"{rest.Sum(x => x.Files):N0} dosya", Format.Bytes(rest.Sum(x => x.Bytes))));
+        }
+
+        PreviewLabel.Text = "Neler silinecek?";
+        UpdateSelection();
+
+        bool sweep = ListDialog.Show(this, "Neler silinecek?",
+            $"{selected.Count} görev · yaklaşık {Format.Bytes(total)} · Bu bir önizleme, henüz hiçbir şey silinmedi.",
+            rows,
+            "Sadece önbellekler ve geçici dosyalar silinir; kişisel dosyalarınıza dokunulmaz.",
+            "Temizle");
+        if (sweep) await SweepAsync();
+    }
+
+    void StartupButton_Click(object sender, RoutedEventArgs e)
+    {
+        var items = SystemInfo.GetStartupItems();
+        var rows = items.Select(i => new ListRow(i.Name, $"{i.Source} · {i.Command}")).ToList();
+        if (rows.Count == 0) rows.Add(new ListRow("Açılışta çalışan program yok"));
+
+        bool open = ListDialog.Show(this, "Başlangıç programları",
+            $"Windows açılırken {items.Count} program çalışıyor. Her biri açılışı ve RAM'i biraz daha yavaşlatır.",
+            rows,
+            "Kapatmak için Görev Yöneticisi → Başlangıç uygulamaları.",
+            "Görev Yöneticisi'ni aç");
+        if (!open) return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo("taskmgr.exe", "/0 /startup") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Dialog.Show(this, "Görev Yöneticisi açılamadı", ex.Message, DialogKind.Error);
+        }
+    }
+
+    void AdminButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Dialog.Confirm(this, "Yönetici olarak yeniden açılsın mı?",
+                "Windows Update ve Teslim İyileştirme önbelleklerini temizlemek için yönetici izni gerekir. Windows bir onay penceresi gösterecek.",
+                "Yeniden aç"))
+            return;
+
+        if (Elevation.RestartAsAdmin()) Application.Current.Shutdown();
+    }
 
     async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {

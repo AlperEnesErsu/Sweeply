@@ -12,27 +12,42 @@ public sealed class DockerBuildCacheTask : ICleanupTask
     public string Title => "Docker build cache";
     public string Description => "Build ara katmanları. İmajlara, konteynerlere ve volume'lara dokunmaz. Docker açıkken çalışır.";
     public TaskKind Kind => TaskKind.Disk;
+    public TaskGroup Group => TaskGroup.Developer;
     public bool EnabledByDefault => true;
 
     public async Task<Analysis> AnalyzeAsync(CancellationToken ct)
     {
         var docker = CommandRunner.FindOnPath("docker.exe");
-        if (docker == null) return new Analysis(false, 0, "Docker yüklü değil.");
+        if (docker == null) return new Analysis(false, 0, "Bu bilgisayarda bulunamadı.");
 
         var info = await CommandRunner.RunAsync(docker, "info --format {{.ServerVersion}}", TimeSpan.FromSeconds(15), ct);
-        if (info.ExitCode != 0) return new Analysis(false, 0, "Docker çalışmıyor; açıkken tekrar analiz edin.");
+        if (info.ExitCode != 0) return new Analysis(false, 0, "Docker çalışmıyor; açıkken tekrar tarayın.");
 
-        var df = await CommandRunner.RunAsync(docker, "system df --format \"{{.Type}}|{{.Reclaimable}}\"", TimeSpan.FromSeconds(30), ct);
-        long bytes = df.ExitCode == 0 ? ParseReclaimableBuildCache(df.Output) : -1;
-        return new Analysis(true, bytes, "Alan Docker'ın sanal diskinde açılır; Windows'a geri vermek için README'deki sıkıştırma adımına bakın.");
+        return new Analysis(true, await ReclaimableAsync(docker, ct),
+            "Alan Docker'ın sanal diskinde açılır; Windows'a geri vermek için README'deki sıkıştırma adımına bakın.");
     }
 
-    public async Task<TaskResult> RunAsync(CancellationToken ct)
+    static async Task<long> ReclaimableAsync(string docker, CancellationToken ct)
+    {
+        var df = await CommandRunner.RunAsync(docker, "system df --format \"{{.Type}}|{{.Reclaimable}}\"", TimeSpan.FromSeconds(30), ct);
+        return df.ExitCode == 0 ? ParseReclaimableBuildCache(df.Output) : -1;
+    }
+
+    public async Task<Preview> PreviewAsync(CancellationToken ct)
+    {
+        var docker = CommandRunner.FindOnPath("docker.exe");
+        long bytes = docker == null ? 0 : Math.Max(0, await ReclaimableAsync(docker, ct));
+        return new Preview([new PreviewEntry("docker builder prune -a -f", bytes, 0, IsCommand: true)],
+            "Sadece build ara katmanları silinir; imajlar, konteynerler ve volume'lar korunur.");
+    }
+
+    public async Task<TaskResult> RunAsync(IProgress<CleanProgress>? progress, CancellationToken ct)
     {
         var docker = CommandRunner.FindOnPath("docker.exe");
         if (docker == null) return new TaskResult(0, "Docker bulunamadı");
 
         var result = await CommandRunner.RunAsync(docker, "builder prune -a -f", TimeSpan.FromMinutes(10), ct);
+        if (ct.IsCancellationRequested) return new TaskResult(0, "Durduruldu");
         if (result.ExitCode != 0) return new TaskResult(0, "Docker komutu başarısız: " + result.Output.Trim());
 
         long freed = ParsePruneTotal(result.Output);

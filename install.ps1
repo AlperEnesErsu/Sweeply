@@ -7,7 +7,8 @@ $ErrorActionPreference = 'Stop'
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\Sweeply'
 $project = Join-Path $PSScriptRoot 'src\Sweeply\Sweeply.csproj'
 
-dotnet publish $project -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o $dest
+# Tek dosya, .NET gerektirmeyen (self-contained) exe: src\Sweeply\Properties\PublishProfiles\win-x64.pubxml
+dotnet publish $project -p:PublishProfile=win-x64 -o $dest
 if ($LASTEXITCODE -ne 0) { throw 'Derleme başarısız oldu.' }
 
 $exe = Join-Path $dest 'Sweeply.exe'

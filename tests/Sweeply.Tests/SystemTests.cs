@@ -129,6 +129,16 @@ public class CommandRunnerTests
     }
 
     [Fact]
+    public async Task Run_StopsTheProcess_WhenTheUserCancels()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        var (code, output) = await CommandRunner.RunAsync("cmd.exe", "/c ping -n 30 127.0.0.1 >nul", TimeSpan.FromMinutes(1), cts.Token);
+
+        Assert.Equal(-1, code);
+        Assert.Equal("iptal edildi", output);
+    }
+
+    [Fact]
     public async Task Run_MissingExecutable_DoesNotThrow()
     {
         var (code, _) = await CommandRunner.RunAsync("olmayan-program-12345.exe", "", TimeSpan.FromSeconds(5));

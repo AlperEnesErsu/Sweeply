@@ -17,6 +17,10 @@ public sealed record HealthSnapshot(
     public double DiskUsedPercent => DiskTotal == 0 ? 0 : 100.0 * (DiskTotal - DiskFree) / DiskTotal;
 }
 
+/// <param name="Command">Çalıştırılan komut veya kısayol yolu.</param>
+/// <param name="Source">Nereden başlatıldığı (kayıt defteri / Başlangıç klasörü).</param>
+public sealed record StartupItem(string Name, string Command, string Source);
+
 public static class SystemInfo
 {
     [StructLayout(LayoutKind.Sequential)]
@@ -51,43 +55,49 @@ public static class SystemInfo
             drive.TotalSize,
             drive.AvailableFreeSpace,
             TimeSpan.FromMilliseconds(Environment.TickCount64),
-            CountStartupItems());
+            GetStartupItems().Count);
     }
 
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     const string ApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\";
 
-    /// <summary>Görev Yöneticisi'nde "Etkin" görünen başlangıç öğelerinin sayısı (Run anahtarları + Başlangıç klasörleri).</summary>
-    static int CountStartupItems()
+    /// <summary>Görev Yöneticisi'nde "Etkin" görünen başlangıç öğeleri (Run anahtarları + Başlangıç klasörleri).</summary>
+    public static List<StartupItem> GetStartupItems()
     {
-        int count = 0;
-        count += CountRunKey(Registry.CurrentUser);
-        count += CountRunKey(Registry.LocalMachine);
-        count += CountStartupFolder(Environment.GetFolderPath(Environment.SpecialFolder.Startup), Registry.CurrentUser);
-        count += CountStartupFolder(Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup), Registry.LocalMachine);
-        return count;
+        var items = new List<StartupItem>();
+        items.AddRange(FromRunKey(Registry.CurrentUser, "Kullanıcı · kayıt defteri"));
+        items.AddRange(FromRunKey(Registry.LocalMachine, "Tüm kullanıcılar · kayıt defteri"));
+        items.AddRange(FromStartupFolder(Environment.GetFolderPath(Environment.SpecialFolder.Startup), Registry.CurrentUser, "Kullanıcı · Başlangıç klasörü"));
+        items.AddRange(FromStartupFolder(Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup), Registry.LocalMachine, "Tüm kullanıcılar · Başlangıç klasörü"));
+        return items.OrderBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
-    static int CountRunKey(RegistryKey hive)
+    static IEnumerable<StartupItem> FromRunKey(RegistryKey hive, string source)
     {
         try
         {
             using var key = hive.OpenSubKey(RunKey);
-            return key?.GetValueNames().Count(n => n.Length > 0 && !IsDisabled(hive, "Run", n)) ?? 0;
+            if (key == null) return [];
+            return key.GetValueNames()
+                .Where(n => n.Length > 0 && !IsDisabled(hive, "Run", n))
+                .Select(n => new StartupItem(n, key.GetValue(n)?.ToString() ?? "", source))
+                .ToList();
         }
-        catch { return 0; }
+        catch { return []; }
     }
 
-    static int CountStartupFolder(string folder, RegistryKey hive)
+    static IEnumerable<StartupItem> FromStartupFolder(string folder, RegistryKey hive, string source)
     {
         try
         {
-            if (!Directory.Exists(folder)) return 0;
+            if (!Directory.Exists(folder)) return [];
             return Directory.EnumerateFiles(folder)
-                .Select(Path.GetFileName)
-                .Count(n => n != null && !n.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase) && !IsDisabled(hive, "StartupFolder", n));
+                .Select(p => Path.GetFileName(p))
+                .Where(n => !n.Equals("desktop.ini", StringComparison.OrdinalIgnoreCase) && !IsDisabled(hive, "StartupFolder", n))
+                .Select(n => new StartupItem(Path.GetFileNameWithoutExtension(n), Path.Combine(folder, n), source))
+                .ToList();
         }
-        catch { return 0; }
+        catch { return []; }
     }
 
     // StartupApproved altında ilk baytı tek sayı olan girdiler kullanıcı tarafından devre dışı bırakılmıştır.

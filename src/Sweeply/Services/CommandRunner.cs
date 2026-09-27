@@ -39,7 +39,7 @@ public static class CommandRunner
         catch (OperationCanceledException)
         {
             try { process.Kill(entireProcessTree: true); } catch { }
-            return (-1, "zaman aşımı");
+            return (-1, ct.IsCancellationRequested ? "iptal edildi" : "zaman aşımı");
         }
 
         return (process.ExitCode, await stdout + await stderr);

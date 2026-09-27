@@ -30,6 +30,18 @@ public class FormatTests
         Assert.Equal("1 sa 30 dk", Format.Duration(TimeSpan.FromMinutes(90)));
     }
 
+    [Fact]
+    public void ShortPath_ReplacesUserFoldersWithTokens()
+    {
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+        Assert.Equal(@"%TEMP%\setup", Format.ShortPath(Path.Combine(Path.GetTempPath(), "setup")));
+        Assert.Equal(@"%LOCALAPPDATA%\Google\Cache", Format.ShortPath(Path.Combine(local, @"Google\Cache")));
+        Assert.Equal(@"%APPDATA%\Code\Cache", Format.ShortPath(Path.Combine(roaming, @"Code\Cache")));
+        Assert.Equal(@"D:\veri\dosya.txt", Format.ShortPath(@"D:\veri\dosya.txt"));
+    }
+
     [Theory]
     [InlineData("19.68GB", 19_680_000_000)]
     [InlineData("532.9MB (41%)", 532_900_000)]
