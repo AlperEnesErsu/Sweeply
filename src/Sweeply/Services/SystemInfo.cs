@@ -11,7 +11,8 @@ public sealed record HealthSnapshot(
     long DiskTotal,
     long DiskFree,
     TimeSpan Uptime,
-    int StartupCount)
+    int StartupCount,
+    bool FastStartup = false)
 {
     public long RamUsed => RamTotal - RamAvailable;
     public double DiskUsedPercent => DiskTotal == 0 ? 0 : 100.0 * (DiskTotal - DiskFree) / DiskTotal;
@@ -54,8 +55,10 @@ public static class SystemInfo
             drive.Name.TrimEnd('\\'),
             drive.TotalSize,
             drive.AvailableFreeSpace,
+            // Hızlı Başlangıç ile yapılan "kapat/aç" döngüleri bu süreyi sıfırlamaz; süre son tam açılıştan beri sayılır.
             TimeSpan.FromMilliseconds(Environment.TickCount64),
-            GetStartupItems().Count);
+            GetStartupItems().Count,
+            BootHistory.FastStartupEnabled());
     }
 
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";

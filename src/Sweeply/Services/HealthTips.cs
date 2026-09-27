@@ -14,8 +14,11 @@ public static class HealthTips
     public static string? Disk(HealthSnapshot s) =>
         s.DiskUsedPercent >= DiskFullPercent ? $"%{s.DiskUsedPercent:0} dolu; SSD'ler dolunca yavaşlar" : null;
 
+    /// <summary>Hızlı Başlangıç açıksa "Kapat" süreyi sıfırlamaz; kullanıcıya bunu söyleyen uyarı gösterilir.</summary>
     public static string? Uptime(HealthSnapshot s) =>
-        s.Uptime.TotalDays >= UptimeDays ? "Yeniden başlatmanız önerilir" : null;
+        s.Uptime.TotalDays < UptimeDays ? null
+        : s.FastStartup ? "Hızlı Başlangıç açık: tam kapanmıyor"
+        : "Yeniden başlatmanız önerilir";
 
     public static string? Startup(HealthSnapshot s) =>
         s.StartupCount >= StartupItems ? "Fazla; Görev Yöneticisi → Başlangıç" : null;

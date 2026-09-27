@@ -15,6 +15,7 @@ public partial class ListDialog : Window
     {
         InitializeComponent();
         Owner = owner;
+        Title = title;  // görünmez ama ekran okuyucular ve UI Automation pencereyi bu adla tanır
         TitleText.Text = title;
         SubtitleText.Text = subtitle;
         FooterText.Text = footer;

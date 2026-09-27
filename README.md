@@ -61,7 +61,7 @@ Bu betik uygulamayı `%LOCALAPPDATA%\Programs\Sweeply` klasörüne kurar ve masa
 - Uygulamayı normal açarsanız önce analiz sonuçlarını görürsünüz. İstediğiniz görevleri işaretleyip **Temizle** butonuna basarsınız.
 - Kısayolu uygulama içinden de oluşturabilirsiniz: **Masaüstü kısayolu**.
 
-Normalde yönetici izni gerekmez; yönetici yetkisi gerektiren dosyalar (ör. bazı `C:\Windows\Temp` içerikleri) sessizce atlanır. **Başlangıç programları** alanına tıklayınca açılışta çalışan programlar listelenir ve Görev Yöneticisi'nin Başlangıç sekmesi tek tıkla açılır. Windows'ta "Animasyon efektleri" kapalıysa uygulamadaki animasyonlar da kapanır.
+Normalde yönetici izni gerekmez; yönetici yetkisi gerektiren dosyalar (ör. bazı `C:\Windows\Temp` içerikleri) sessizce atlanır. **Son tam açılıştan beri** alanı, Windows'un Hızlı Başlangıç özelliği açıksa bunu fark eder: bu durumda "Kapat" bilgisayarı tam kapatmaz ve süre sıfırlanmaz. Alana tıklayınca son açılışlar türleriyle (tam açılış / Hızlı Başlangıç) listelenir ve güç ayarları tek tıkla açılır. **Başlangıç programları** alanına tıklayınca açılışta çalışan programlar listelenir ve Görev Yöneticisi'nin Başlangıç sekmesi tek tıkla açılır. Windows'ta "Animasyon efektleri" kapalıysa uygulamadaki animasyonlar da kapanır.
 
 ## İpucu: Docker'ın kapladığı alanı Windows'a geri vermek
 

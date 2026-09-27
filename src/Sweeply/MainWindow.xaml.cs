@@ -124,7 +124,7 @@ public partial class MainWindow : Window
         ShowNote(DiskBar, DiskSub, HealthTips.Disk(s), $"{Format.Bytes(s.DiskTotal)} kapasite");
 
         UptimeText.Text = Format.Duration(s.Uptime);
-        ShowNote(null, UptimeSub, HealthTips.Uptime(s), "son açılıştan beri");
+        ShowNote(null, UptimeSub, HealthTips.Uptime(s), s.FastStartup ? "Hızlı Başlangıç açık" : "açılış geçmişi için tıklayın");
 
         StartupText.Text = s.StartupCount.ToString();
         ShowNote(null, StartupSub, HealthTips.Startup(s), "listeyi görmek için tıklayın");
@@ -364,6 +364,42 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Dialog.Show(this, "Görev Yöneticisi açılamadı", ex.Message, DialogKind.Error);
+        }
+    }
+
+    void UptimeButton_Click(object sender, RoutedEventArgs e)
+    {
+        bool fastStartup = BootHistory.FastStartupEnabled();
+        var boots = BootHistory.Recent();
+        var rows = boots.Select(b => new ListRow(b.Time.ToString("dd MMMM yyyy, dddd HH:mm"), BootHistory.Describe(b.Kind))).ToList();
+        if (rows.Count == 0) rows.Add(new ListRow("Açılış geçmişi okunamadı"));
+
+        var lastFull = boots.FirstOrDefault(b => b.Kind == BootKind.Full);
+        string since = lastFull != null ? $"Son tam açılış: {lastFull.Time:dd MMMM HH:mm}. " : "";
+
+        if (!fastStartup)
+        {
+            ListDialog.Show(this, "Açılış geçmişi", since + "Hızlı Başlangıç kapalı; her \"Kapat\" tam bir kapatmadır.", rows);
+            return;
+        }
+
+        int fastSinceFull = boots.TakeWhile(b => b.Kind != BootKind.Full).Count(b => b.Kind == BootKind.FastStartup);
+        bool open = ListDialog.Show(this, "Hızlı Başlangıç açık",
+            since + (fastSinceFull > 0 ? $"O zamandan beri {fastSinceFull} kez kapatıp açtınız ama hiçbiri tam kapatma değildi. " : "") +
+            "Hızlı Başlangıç açıkken \"Kapat\" Windows çekirdeğini diske kaydeder; bellek ve sürücüler sıfırlanmaz.",
+            rows,
+            "Tek seferlik tam kapatma: Shift'e basılıyken Kapat. Kalıcı çözüm: Hızlı başlangıcı aç işaretini kaldırın.",
+            "Güç ayarlarını aç");
+        if (!open) return;
+
+        try
+        {
+            // "Güç düğmelerinin yapacaklarını seçin" sayfası; ayarı kullanıcı kendisi değiştirir.
+            Process.Start(new ProcessStartInfo("control.exe", "/name Microsoft.PowerOptions /page pageGlobalSettings") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Dialog.Show(this, "Güç ayarları açılamadı", ex.Message, DialogKind.Error);
         }
     }
 

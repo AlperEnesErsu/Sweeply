@@ -104,6 +104,37 @@ public class HealthTipsTests
     [Fact]
     public void JustBelowThresholds_HasNoWarnings() =>
         Assert.All(All(Snapshot(ramLoad: 84, diskUsed: 84.4, uptimeDays: 2.9, startup: 7)), Assert.Null);
+
+    [Fact]
+    public void LongUptime_WithFastStartup_ExplainsThatShutDownIsNotAFullShutdown()
+    {
+        var withFastStartup = Snapshot(uptimeDays: 3.3) with { FastStartup = true };
+
+        Assert.Equal("Hızlı Başlangıç açık: tam kapanmıyor", HealthTips.Uptime(withFastStartup));
+        Assert.Equal("Yeniden başlatmanız önerilir", HealthTips.Uptime(Snapshot(uptimeDays: 3.3)));
+        Assert.Null(HealthTips.Uptime(Snapshot(uptimeDays: 1) with { FastStartup = true }));
+    }
+}
+
+public class BootHistoryTests
+{
+    [Theory]
+    [InlineData(0, BootKind.Full)]
+    [InlineData(1, BootKind.FastStartup)]
+    [InlineData(2, BootKind.Hibernate)]
+    [InlineData(7, BootKind.Unknown)]
+    public void KernelBootCode_MapsToBootKind(int code, BootKind kind) =>
+        Assert.Equal(kind, BootHistory.KindFrom(code));
+
+    [Fact]
+    public void Recent_ReadsTheRealEventLog_NewestFirst()
+    {
+        var boots = BootHistory.Recent(10);
+
+        Assert.InRange(boots.Count, 1, 10);
+        Assert.All(boots, b => Assert.True(b.Time <= DateTime.Now));
+        Assert.Equal(boots.OrderByDescending(b => b.Time).Select(b => b.Time), boots.Select(b => b.Time));
+    }
 }
 
 public class CommandRunnerTests

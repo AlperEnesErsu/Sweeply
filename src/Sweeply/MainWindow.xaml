@@ -86,12 +86,19 @@
                         <TextBlock x:Name="DiskSub" Style="{StaticResource Caption}" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                     </StackPanel>
                 </Border>
-                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" Padding="24,16">
-                    <StackPanel>
-                        <TextBlock Text="Açık kalma süresi" Style="{StaticResource Label}" />
-                        <TextBlock x:Name="UptimeText" Style="{StaticResource Metric}" />
-                        <TextBlock x:Name="UptimeSub" Style="{StaticResource Caption}" Margin="0,21,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
-                    </StackPanel>
+                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+                    <Button x:Name="UptimeButton" Style="{StaticResource CellButton}" Padding="24,16" Click="UptimeButton_Click"
+                            AutomationProperties.Name="Açılış geçmişini göster">
+                        <StackPanel>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Text="&#xE76C;" Style="{StaticResource Icon}" FontSize="10"
+                                           Foreground="{StaticResource Subtle}" />
+                                <TextBlock Text="Son tam açılıştan beri" Style="{StaticResource Label}" />
+                            </DockPanel>
+                            <TextBlock x:Name="UptimeText" Style="{StaticResource Metric}" />
+                            <TextBlock x:Name="UptimeSub" Style="{StaticResource Caption}" Margin="0,21,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                        </StackPanel>
+                    </Button>
                 </Border>
                 <Button x:Name="StartupButton" Style="{StaticResource CellButton}" Padding="24,16,32,16" Click="StartupButton_Click"
                         AutomationProperties.Name="Başlangıç programlarını göster">
