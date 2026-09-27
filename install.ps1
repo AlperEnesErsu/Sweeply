@@ -1,20 +1,20 @@
-﻿# Optimayzır'ı kaynak koddan derler, %LOCALAPPDATA%\Programs\Optimayzir klasörüne kurar
+﻿# Sweeply'ı kaynak koddan derler, %LOCALAPPDATA%\Programs\Sweeply klasörüne kurar
 # ve masaüstüne tek tıkla optimize eden bir kısayol ekler.
 # Kullanım: powershell -ExecutionPolicy Bypass -File install.ps1 [-NoShortcut]
 param([switch]$NoShortcut)
 $ErrorActionPreference = 'Stop'
 
-$dest = Join-Path $env:LOCALAPPDATA 'Programs\Optimayzir'
-$project = Join-Path $PSScriptRoot 'src\Optimayzir\Optimayzir.csproj'
+$dest = Join-Path $env:LOCALAPPDATA 'Programs\Sweeply'
+$project = Join-Path $PSScriptRoot 'src\Sweeply\Sweeply.csproj'
 
 dotnet publish $project -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o $dest
 if ($LASTEXITCODE -ne 0) { throw 'Derleme başarısız oldu.' }
 
-$exe = Join-Path $dest 'Optimayzir.exe'
+$exe = Join-Path $dest 'Sweeply.exe'
 if (-not $NoShortcut) {
     $desktop = [Environment]::GetFolderPath('DesktopDirectory')
     $shell = New-Object -ComObject WScript.Shell
-    $link = $shell.CreateShortcut((Join-Path $desktop 'Optimayzır.lnk'))
+    $link = $shell.CreateShortcut((Join-Path $desktop 'Sweeply.lnk'))
     $link.TargetPath = $exe
     $link.Arguments = '--auto'
     $link.WorkingDirectory = $dest

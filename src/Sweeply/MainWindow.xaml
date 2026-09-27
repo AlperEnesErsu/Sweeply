@@ -1,0 +1,206 @@
+<Window x:Class="Sweeply.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sweeply" Width="1080" Height="760" MinWidth="960" MinHeight="660"
+        WindowStartupLocation="CenterScreen" Icon="Assets/app.ico"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
+        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Ana sonuç ve eylemler (uygulama adı zaten Windows başlık çubuğunda) -->
+        <Grid x:Name="Hero" Grid.Row="1" Margin="32,18,26,26">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock x:Name="HeadlineCaption" Text="Temizlenebilir alan" Style="{StaticResource Label}" />
+                <TextBlock x:Name="HeadlineValue" Text="…" FontFamily="{StaticResource DisplayFont}" FontSize="52"
+                           FontWeight="SemiBold" Typography.NumeralAlignment="Tabular" Margin="-2,0,0,0" />
+                <TextBlock x:Name="HeadlineSub" Style="{StaticResource Caption}" FontSize="13" />
+                <ProgressBar x:Name="RunProgress" Style="{StaticResource Bar}" Width="320" HorizontalAlignment="Left"
+                             Margin="0,14,0,0" Visibility="Collapsed" />
+            </StackPanel>
+            <DockPanel Grid.Column="1">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="ShortcutButton" Style="{StaticResource TextButton}" Click="ShortcutButton_Click"
+                            AutomationProperties.Name="Masaüstü kısayolu" ToolTip="Masaüstüne tek tıkla temizleyen bir kısayol ekler">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE71B;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" />
+                            <TextBlock Text="Masaüstü kısayolu" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="RefreshButton" Style="{StaticResource TextButton}" Click="RefreshButton_Click"
+                            AutomationProperties.Name="Yeniden tara" Margin="2,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE72C;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" />
+                            <TextBlock Text="Yeniden tara" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <Button x:Name="SweepButton" Style="{StaticResource PrimaryButton}" MinWidth="150" HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom" Margin="0,0,6,4" Click="SweepButton_Click" AutomationProperties.Name="Temizle">
+                    <TextBlock x:Name="SweepLabel" Text="Temizle" />
+                </Button>
+            </DockPanel>
+        </Grid>
+
+        <!-- Sistem şeridi -->
+        <Border Grid.Row="2" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1">
+            <UniformGrid x:Name="Strip" Columns="4">
+                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" Padding="32,16,24,16">
+                    <StackPanel>
+                        <TextBlock Text="Bellek" Style="{StaticResource Label}" />
+                        <TextBlock x:Name="RamText" Style="{StaticResource Metric}" />
+                        <ProgressBar x:Name="RamBar" Style="{StaticResource Bar}" Margin="0,10,0,0" />
+                        <TextBlock x:Name="RamSub" Style="{StaticResource Caption}" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                    </StackPanel>
+                </Border>
+                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" Padding="24,16">
+                    <StackPanel>
+                        <TextBlock x:Name="DiskLabel" Text="Disk" Style="{StaticResource Label}" />
+                        <TextBlock x:Name="DiskText" Style="{StaticResource Metric}" />
+                        <ProgressBar x:Name="DiskBar" Style="{StaticResource Bar}" Margin="0,10,0,0" />
+                        <TextBlock x:Name="DiskSub" Style="{StaticResource Caption}" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                    </StackPanel>
+                </Border>
+                <Border BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" Padding="24,16">
+                    <StackPanel>
+                        <TextBlock Text="Açık kalma süresi" Style="{StaticResource Label}" />
+                        <TextBlock x:Name="UptimeText" Style="{StaticResource Metric}" />
+                        <TextBlock x:Name="UptimeSub" Style="{StaticResource Caption}" Margin="0,21,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                    </StackPanel>
+                </Border>
+                <Border Padding="24,16,32,16">
+                    <StackPanel>
+                        <TextBlock Text="Başlangıç programları" Style="{StaticResource Label}" />
+                        <TextBlock x:Name="StartupText" Style="{StaticResource Metric}" />
+                        <TextBlock x:Name="StartupSub" Style="{StaticResource Caption}" Margin="0,21,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+        </Border>
+
+        <!-- Listeler -->
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="1" />
+                <ColumnDefinition Width="2*" />
+            </Grid.ColumnDefinitions>
+
+            <DockPanel Margin="32,20,20,8">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,12,6">
+                    <TextBlock x:Name="SelectedCount" DockPanel.Dock="Right" Style="{StaticResource Caption}" />
+                    <TextBlock Text="Temizlik" FontWeight="SemiBold" />
+                </DockPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="TasksList" Margin="0,0,12,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="0,12" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Style="{StaticResource Check}" IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                  IsEnabled="{Binding IsAvailable}" AutomationProperties.Name="{Binding Title}">
+                                            <StackPanel>
+                                                <TextBlock x:Name="TitleText" Text="{Binding Title}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Description}" Style="{StaticResource Caption}" Margin="0,3,0,0" />
+                                                <TextBlock Text="{Binding Note}" Style="{StaticResource OptionalLine}" Foreground="{StaticResource Warn}" />
+                                                <StackPanel x:Name="StatusLine" Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
+                                                    <Ellipse x:Name="Spin" Style="{StaticResource Spinner}" Margin="0,0,8,0" Visibility="Collapsed">
+                                                        <Ellipse.RenderTransform>
+                                                            <RotateTransform />
+                                                        </Ellipse.RenderTransform>
+                                                    </Ellipse>
+                                                    <TextBlock x:Name="Check" Text="&#xE73E;" Style="{StaticResource Icon}" FontSize="11"
+                                                               Foreground="{StaticResource Good}" Margin="0,0,7,0" Visibility="Collapsed" />
+                                                    <TextBlock x:Name="StatusText" Text="{Binding Status}" FontSize="12"
+                                                               Foreground="{StaticResource Good}" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </CheckBox>
+                                        <TextBlock x:Name="EstimateText" Grid.Column="1" Text="{Binding Estimate}" FontWeight="SemiBold"
+                                                   Typography.NumeralAlignment="Tabular" Margin="20,0,0,0" VerticalAlignment="Top" />
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Bytes}" Value="0">
+                                        <Setter TargetName="EstimateText" Property="Foreground" Value="{StaticResource Subtle}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsAvailable}" Value="False">
+                                        <Setter TargetName="TitleText" Property="Foreground" Value="{StaticResource Muted}" />
+                                        <Setter TargetName="EstimateText" Property="Foreground" Value="{StaticResource Subtle}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding State}" Value="Running">
+                                        <Setter TargetName="StatusLine" Property="Visibility" Value="Visible" />
+                                        <Setter TargetName="Spin" Property="Visibility" Value="Visible" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource Muted}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding State}" Value="Done">
+                                        <Setter TargetName="StatusLine" Property="Visibility" Value="Visible" />
+                                        <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding State}" Value="Failed">
+                                        <Setter TargetName="StatusLine" Property="Visibility" Value="Visible" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource Danger}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+
+            <Border Grid.Column="1" Background="{StaticResource Line}" />
+
+            <DockPanel Grid.Column="2" Margin="20,20,20,8">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,12,6">
+                    <TextBlock DockPanel.Dock="Right" Text="kapatmak RAM'i hemen boşaltır" Style="{StaticResource Caption}" />
+                    <TextBlock Text="Bellek kullanımı" FontWeight="SemiBold" />
+                </DockPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="ProcList" Margin="0,0,12,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="0,9" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock TextTrimming="CharacterEllipsis">
+                                                <Run Text="{Binding Name, Mode=OneWay}" />
+                                                <Run Text="{Binding CountText, Mode=OneWay}" Foreground="{StaticResource Subtle}" FontSize="12" />
+                                            </TextBlock>
+                                            <ProgressBar Style="{StaticResource Bar}" Foreground="{StaticResource Subtle}"
+                                                         Value="{Binding SharePercent, Mode=OneWay}" Margin="0,7,0,0" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding MemoryText}" FontWeight="SemiBold" MinWidth="64"
+                                                   TextAlignment="Right" Typography.NumeralAlignment="Tabular"
+                                                   VerticalAlignment="Center" Margin="16,0,6,0" />
+                                        <Button Grid.Column="2" Style="{StaticResource TextButton}" Content="Kapat" Padding="8,4"
+                                                VerticalAlignment="Center" Tag="{Binding}" Click="CloseProcess_Click"
+                                                AutomationProperties.Name="{Binding Name, StringFormat=Kapat: {0}}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Grid>
+    </Grid>
+</Window>
