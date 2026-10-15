@@ -105,9 +105,7 @@ public partial class MainWindow : Window
         if (_busy || _showingResult) return;
         long disk = selected.Where(i => i.Job.Kind == TaskKind.Disk).Sum(i => Math.Max(0, i.Bytes));
         HeadlineValue.Text = Format.Bytes(disk);
-        HeadlineSub.Text = selected.Count == 0
-            ? "Temizlemek için en az bir görev seçin."
-            : $"{selected.Count} görev seçili · Temp klasöründe sadece 24 saatten eski dosyalar silinir.";
+        HeadlineSub.Text = Summaries.SelectionSub(selected.Count);
     }
 
     void UpdateHealth()
@@ -167,10 +165,7 @@ public partial class MainWindow : Window
         item.IsAvailable = analysis.Available;
         item.Bytes = analysis.Bytes;
         item.Note = analysis.Note;
-        // Yönetici izni bekleyen görevlerde de boyut gösterilir: kullanıcı neyi kaçırdığını görsün.
-        item.Estimate = analysis.Bytes < 0 ? "?"
-            : !analysis.Available && analysis.Bytes == 0 ? "—"
-            : Format.Bytes(analysis.Bytes);
+        item.Estimate = Summaries.Estimate(analysis);
     }
 
     async Task SweepAsync()
@@ -245,7 +240,7 @@ public partial class MainWindow : Window
 
         RunProgress.Visibility = Visibility.Collapsed;
         _showingResult = true;
-        ShowResult(disk, ram, ct.IsCancellationRequested);
+        ShowHeadline(Summaries.SweepResult(disk, ram, ct.IsCancellationRequested));
         _cts.Dispose();
         _cts = null;
 
@@ -256,30 +251,12 @@ public partial class MainWindow : Window
         await AnalyzeAsync();
     }
 
-    void ShowResult(long disk, long ram, bool cancelled)
+    void ShowHeadline(Headline h)
     {
-        if (cancelled)
-        {
-            HeadlineCaption.Text = "Durduruldu";
-            HeadlineValue.Text = Format.Bytes(disk);
-            HeadlineValue.Foreground = Res(disk > 0 ? "Good" : "Text");
-            HeadlineSub.Text = "O ana kadar silinenler silindi; kalan görevler çalıştırılmadı.";
-            return;
-        }
-        if (disk == 0 && ram == 0)
-        {
-            HeadlineCaption.Text = "Sonuç";
-            HeadlineValue.Text = "Zaten temiz";
-            HeadlineSub.Text = "Silinebilecek bir şey bulunamadı. Ayrıntılar her görevin altında.";
-            return;
-        }
-
-        HeadlineCaption.Text = "Temizlendi";
-        HeadlineValue.Text = Format.Bytes(disk);
-        HeadlineValue.Foreground = Res("Good");
-        HeadlineSub.Text = ram > 0
-            ? $"disk alanı açıldı · ayrıca {Format.Bytes(ram)} RAM boşaldı"
-            : "disk alanı açıldı · ayrıntılar her görevin altında";
+        HeadlineCaption.Text = h.Caption;
+        HeadlineValue.Text = h.Value;
+        HeadlineValue.Foreground = Res(h.Tone == Tone.Good ? "Good" : "Text");
+        HeadlineSub.Text = h.Sub;
     }
 
     void SetBusy(bool busy)
@@ -308,30 +285,15 @@ public partial class MainWindow : Window
         PreviewButton.IsEnabled = false;
         PreviewLabel.Text = "Hazırlanıyor…";
 
-        const int PerTask = 12;
-        var rows = new List<ListRow>();
-        long total = 0;
+        var previews = new List<(string, TaskKind, Preview)>();
         foreach (var item in selected)
         {
             Preview preview;
             try { preview = await item.Job.PreviewAsync(CancellationToken.None); }
             catch (Exception ex) { preview = new Preview([], ex.Message); }
-
-            long sum = preview.Entries.Sum(x => x.Bytes);
-            if (item.Job.Kind == TaskKind.Disk) total += sum;
-            rows.Add(new ListRow(item.Title, preview.Note, Format.Bytes(sum), IsHeader: true));
-
-            if (preview.Entries.Count == 0) rows.Add(new ListRow("Silinecek bir şey yok"));
-            foreach (var entry in preview.Entries.Take(PerTask))
-            {
-                rows.Add(entry.IsCommand
-                    ? new ListRow("Komut: " + entry.Label, "Aracın kendi temizleme komutu çalıştırılır", Format.Bytes(entry.Bytes))
-                    : new ListRow(Format.ShortPath(entry.Label), $"{entry.Files:N0} dosya", Format.Bytes(entry.Bytes)));
-            }
-            var rest = preview.Entries.Skip(PerTask).ToList();
-            if (rest.Count > 0)
-                rows.Add(new ListRow($"ve {rest.Count:N0} öğe daha", $"{rest.Sum(x => x.Files):N0} dosya", Format.Bytes(rest.Sum(x => x.Bytes))));
+            previews.Add((item.Title, item.Job.Kind, preview));
         }
+        var (rows, total) = Summaries.PreviewRows(previews);
 
         PreviewLabel.Text = "Neler silinecek?";
         UpdateSelection();
@@ -374,19 +336,14 @@ public partial class MainWindow : Window
         var rows = boots.Select(b => new ListRow(b.Time.ToString("dd MMMM yyyy, dddd HH:mm"), BootHistory.Describe(b.Kind))).ToList();
         if (rows.Count == 0) rows.Add(new ListRow("Açılış geçmişi okunamadı"));
 
-        var lastFull = boots.FirstOrDefault(b => b.Kind == BootKind.Full);
-        string since = lastFull != null ? $"Son tam açılış: {lastFull.Time:dd MMMM HH:mm}. " : "";
-
+        var (title, message) = Summaries.BootSummary(boots, fastStartup);
         if (!fastStartup)
         {
-            ListDialog.Show(this, "Açılış geçmişi", since + "Hızlı Başlangıç kapalı; her \"Kapat\" tam bir kapatmadır.", rows);
+            ListDialog.Show(this, title, message, rows);
             return;
         }
 
-        int fastSinceFull = boots.TakeWhile(b => b.Kind != BootKind.Full).Count(b => b.Kind == BootKind.FastStartup);
-        bool open = ListDialog.Show(this, "Hızlı Başlangıç açık",
-            since + (fastSinceFull > 0 ? $"O zamandan beri {fastSinceFull} kez kapatıp açtınız ama hiçbiri tam kapatma değildi. " : "") +
-            "Hızlı Başlangıç açıkken \"Kapat\" Windows çekirdeğini diske kaydeder; bellek ve sürücüler sıfırlanmaz.",
+        bool open = ListDialog.Show(this, title, message,
             rows,
             "Tek seferlik tam kapatma: Shift'e basılıyken Kapat. Kalıcı çözüm: Hızlı başlangıcı aç işaretini kaldırın.",
             "Güç ayarlarını aç");
