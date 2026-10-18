@@ -150,3 +150,32 @@ public class FileCleanerTests
         Assert.Equal(0, FileCleaner.Clean(missing).Freed);
     }
 }
+
+public class FileCleanerExclusionTests
+{
+    [Fact]
+    public void Clean_SkipsFilesInsideExcludedFolder()
+    {
+        using var dir = new TempDir();
+        var kept = dir.File(@"keep\a.bin", 10, TimeSpan.FromDays(2));
+        var removed = dir.File(@"other\b.bin", 10, TimeSpan.FromDays(2));
+
+        var stats = FileCleaner.Clean(dir.Path, default, null, default, [Path.Combine(dir.Path, "keep")]);
+
+        Assert.Equal(1, stats.Deleted);
+        Assert.True(File.Exists(kept));
+        Assert.False(File.Exists(removed));
+    }
+
+    [Fact]
+    public void Measure_And_Preview_IgnoreExcludedFolder()
+    {
+        using var dir = new TempDir();
+        dir.File(@"keep\a.bin", 1000, TimeSpan.FromDays(2));
+        dir.File(@"other\b.bin", 300, TimeSpan.FromDays(2));
+        var exclude = new[] { Path.Combine(dir.Path, "keep") };
+
+        Assert.Equal(300, FileCleaner.Measure(dir.Path, default, exclude));
+        Assert.DoesNotContain(FileCleaner.Preview(dir.Path, default, exclude), e => e.Label.EndsWith("keep"));
+    }
+}

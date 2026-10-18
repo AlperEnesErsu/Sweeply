@@ -24,16 +24,41 @@ public static class Catalog
     /// <summary>Chromium tabanlı tarayıcılarda ve Electron uygulamalarında güvenle silinebilen önbellekler. Çerez, geçmiş ve oturum bunların dışındadır.</summary>
     internal static readonly string[] ChromiumCacheFolders = ["Cache", "Code Cache", "GPUCache"];
 
-    public static ICleanupTask[] All()
+    public static ICleanupTask[] All(AppSettings? settings = null)
     {
         var r = Roots.Current;
-        return
-        [
+        var tasks = new List<ICleanupTask>
+        {
             Temp(r), CrashDumps(r), WindowsUpdate(r), DeliveryOptimization(r),
             Browsers(r), AppCaches(r), Spotify(r),
             DevCaches(r), PackageStores(r), new DockerBuildCacheTask(),
             new WslShutdownTask(),
-        ];
+        };
+
+        // Kullanıcının kendi klasörleri "Sistem" grubunda en sona eklenir; grup başlığı sırası değişmez.
+        var custom = Custom(settings?.CustomFolders ?? new List<string>());
+        if (custom != null) tasks.Insert(4, custom);
+
+        // Hariç tutulan klasörler her önbellek görevine uygulanır.
+        IReadOnlyCollection<string> excluded = (settings?.ExcludedFolders ?? new List<string>()).ToArray();
+        return tasks.Select(t => t is CacheTask c ? c with { Excluded = excluded } : t).ToArray();
+    }
+
+    /// <summary>Kullanıcının eklediği klasörler; hiç yoksa null (görev listede görünmez).</summary>
+    public static CacheTask? Custom(IEnumerable<string> folders)
+    {
+        var list = folders.Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
+        if (list.Count == 0) return null;
+
+        return new CacheTask
+        {
+            Title = "Kendi klasörlerim",
+            Description = "Eklediğiniz klasörlerdeki 24 saatten eski dosyalar. Yalnızca önbellek niteliğindeki klasörleri ekleyin.",
+            Group = TaskGroup.System,
+            EnabledByDefault = false,
+            Apps = () => list.Select(p => App(Path.GetFileName(p.TrimEnd('\\', '/')) is { Length: > 0 } name ? name : p, [],
+                [new FolderSource(p, TempMinAge)])),
+        };
     }
 
     static CacheApp App(string name, string[] processes, IEnumerable<CacheSource> sources) => new(name, processes, sources.ToList());

@@ -51,14 +51,35 @@ public static class FileCleaner
     const int ReportEveryFiles = 200;
     static readonly TimeSpan ReportEvery = TimeSpan.FromMilliseconds(120);
 
-    public static long Measure(string path, TimeSpan minAge = default)
+    /// <summary><paramref name="exclude"/> içindeki klasörlerin altındaki dosyalar hiçbir işlemde sayılmaz ve silinmez.</summary>
+    public static bool IsExcluded(string fullPath, IReadOnlyCollection<string>? exclude)
+    {
+        if (exclude == null || exclude.Count == 0) return false;
+        foreach (var folder in exclude)
+        {
+            var prefix = folder.TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+            if (fullPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>İki yoldan biri diğerinin içindeyse (ya da aynıysa) true.</summary>
+    public static bool Overlaps(string a, string b)
+    {
+        var x = a.TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+        var y = b.TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+        return x.StartsWith(y, StringComparison.OrdinalIgnoreCase) || y.StartsWith(x, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static long Measure(string path, TimeSpan minAge = default, IReadOnlyCollection<string>? exclude = null)
     {
         if (!Directory.Exists(path)) return 0;
-        return Tally(new DirectoryInfo(path), DateTime.UtcNow - minAge).Bytes;
+        return Tally(new DirectoryInfo(path), DateTime.UtcNow - minAge, exclude).Bytes;
     }
 
     /// <param name="progress">Bu klasör için o ana kadarki toplamı bildirir.</param>
-    public static CleanStats Clean(string path, TimeSpan minAge = default, IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    public static CleanStats Clean(string path, TimeSpan minAge = default, IProgress<CleanProgress>? progress = null, CancellationToken ct = default,
+        IReadOnlyCollection<string>? exclude = null)
     {
         var stats = new CleanStats();
         if (!Directory.Exists(path)) return stats;
@@ -78,6 +99,7 @@ public static class FileCleaner
                 stats.Cancelled = true;
                 break;
             }
+            if (IsExcluded(file.FullName, exclude)) continue;
 
             long length = 0;
             try
@@ -131,7 +153,7 @@ public static class FileCleaner
     /// Silinecekleri klasörün ilk seviyesine göre gruplar (ör. Temp\kurulum-artigi: 8 GB, 1.200 dosya).
     /// Hiçbir şey silmez; sadece <c>minAge</c>'den eski dosyaları sayar.
     /// </summary>
-    public static List<PreviewEntry> Preview(string path, TimeSpan minAge = default)
+    public static List<PreviewEntry> Preview(string path, TimeSpan minAge = default, IReadOnlyCollection<string>? exclude = null)
     {
         var entries = new List<PreviewEntry>();
         if (!Directory.Exists(path)) return entries;
@@ -141,11 +163,12 @@ public static class FileCleaner
         {
             foreach (var child in new DirectoryInfo(path).EnumerateFileSystemInfos("*", TopLevel))
             {
+                if (IsExcluded(child.FullName, exclude)) continue;
                 try
                 {
                     var (bytes, files) = child switch
                     {
-                        DirectoryInfo dir => Tally(dir, cutoff),
+                        DirectoryInfo dir => Tally(dir, cutoff, exclude),
                         FileInfo file when file.LastWriteTimeUtc <= cutoff => (file.Length, 1),
                         _ => (0L, 0),
                     };
@@ -159,7 +182,7 @@ public static class FileCleaner
         return entries.OrderByDescending(e => e.Bytes).ToList();
     }
 
-    static (long Bytes, int Files) Tally(DirectoryInfo dir, DateTime cutoff)
+    static (long Bytes, int Files) Tally(DirectoryInfo dir, DateTime cutoff, IReadOnlyCollection<string>? exclude = null)
     {
         long bytes = 0;
         int files = 0;
@@ -169,6 +192,7 @@ public static class FileCleaner
             {
                 try
                 {
+                    if (IsExcluded(file.FullName, exclude)) continue;
                     if (file.LastWriteTimeUtc > cutoff) continue;
                     bytes += file.Length;
                     files++;

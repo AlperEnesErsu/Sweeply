@@ -38,6 +38,20 @@
                             <TextBlock Text="Yönetici olarak aç" />
                         </StackPanel>
                     </Button>
+                    <Button x:Name="ScheduleButton" Style="{StaticResource TextButton}" Click="ScheduleButton_Click" Margin="0,0,2,0"
+                            AutomationProperties.Name="Haftalık otomatik temizlik" ToolTip="Her pazar 10:00'da seçili görevleri otomatik çalıştırır">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE916;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" />
+                            <TextBlock x:Name="ScheduleLabel" Text="Zamanlama" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="FoldersButton" Style="{StaticResource TextButton}" Click="FoldersButton_Click" Margin="0,0,2,0"
+                            AutomationProperties.Name="Temizlik klasörleri" ToolTip="Kendi temizlik klasörlerinizi ekleyin veya hariç tutun">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8B7;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" />
+                            <TextBlock Text="Klasörler" />
+                        </StackPanel>
+                    </Button>
                     <Button x:Name="ShortcutButton" Style="{StaticResource TextButton}" Click="ShortcutButton_Click"
                             AutomationProperties.Name="Masaüstü kısayolu" ToolTip="Masaüstüne tek tıkla temizleyen bir kısayol ekler">
                         <StackPanel Orientation="Horizontal">

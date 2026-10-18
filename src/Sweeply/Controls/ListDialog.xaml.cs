@@ -6,7 +6,13 @@ using System.Windows.Media.Animation;
 namespace Sweeply.Controls;
 
 /// <param name="IsHeader">Bölüm başlığı satırı (kalın, üstünde boşluk).</param>
-public sealed record ListRow(string Primary, string? Secondary = null, string? Right = null, bool IsHeader = false);
+public sealed record ListRow(string Primary, string? Secondary = null, string? Right = null, bool IsHeader = false)
+{
+    /// <summary>Satırda onay kutusu gösterilsin mi ve değeri ne? Null ise kutu gizlenir.</summary>
+    public bool? IsChecked { get; set; }
+
+    public bool HasCheck => IsChecked != null;
+}
 
 /// <summary>Önizleme ve başlangıç programları gibi uzun listeleri gösteren, temaya uygun pencere.</summary>
 public partial class ListDialog : Window
