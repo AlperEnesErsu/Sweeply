@@ -3,6 +3,10 @@ using Sweeply.Models;
 
 namespace Sweeply.Services;
 
+/// <param name="Remaining">Kapatma denemesinden sonra hâlâ açık olan işlem sayısı.</param>
+/// <param name="HadWindow">Kapatma isteği en az bir pencereye gönderildi mi? Hayırsa program arka planda çalışıyordur.</param>
+public sealed record CloseOutcome(int Remaining, bool HadWindow);
+
 public static class ProcessService
 {
     // Windows'un çalışması için gereken veya kapatılması sorun çıkaran işlemler listede hiç gösterilmez.
@@ -15,7 +19,10 @@ public static class ProcessService
         "taskhostw", "vmmem", "vmmemWSL", "vmcompute", "vmwp", "Sweeply",
     };
 
-    public static List<ProcessGroup> GetTop(int count)
+    /// <summary>Kapatma denemesinin en fazla bekleme süresi; işlemler bundan önce kapanırsa hemen döner.</summary>
+    static readonly TimeSpan GracePeriod = TimeSpan.FromSeconds(3);
+
+    public static List<ProcessGroup> GetTop(int count, IEnumerable<string>? extraProtected = null)
     {
         var samples = new List<(string Name, long Bytes)>();
         foreach (var p in Process.GetProcesses())
@@ -24,14 +31,15 @@ public static class ProcessService
             catch { }
             finally { p.Dispose(); }
         }
-        return Group(samples, count);
+        return Group(samples, count, extraProtected);
     }
 
     /// <summary>İşlemleri ada göre toplar, korunanları eler, RAM'e göre sıralar ve ilk <paramref name="count"/> tanesini döndürür.</summary>
-    internal static List<ProcessGroup> Group(IEnumerable<(string Name, long Bytes)> samples, int count)
+    internal static List<ProcessGroup> Group(IEnumerable<(string Name, long Bytes)> samples, int count, IEnumerable<string>? extraProtected = null)
     {
+        var hidden = extraProtected == null ? Protected : new HashSet<string>(Protected.Concat(extraProtected), StringComparer.OrdinalIgnoreCase);
         var groups = samples
-            .Where(s => !Protected.Contains(s.Name))
+            .Where(s => !hidden.Contains(s.Name))
             .GroupBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => (Name: g.First().Name, Count: g.Count(), Bytes: g.Sum(s => s.Bytes)))
             .OrderByDescending(g => g.Bytes)
@@ -43,16 +51,27 @@ public static class ProcessService
         return groups.Select(g => new ProcessGroup(g.Name, g.Count, g.Bytes, (double)g.Bytes / max)).ToList();
     }
 
-    /// <summary>Programa "kapan" mesajı gönderir (kaydetme sorabilsin diye) ve hâlâ açık kalan işlem sayısını döndürür.</summary>
-    public static async Task<int> CloseGracefullyAsync(string name)
+    /// <summary>
+    /// Programa "kapan" mesajı gönderir (kaydetme sorabilsin diye). Hepsi kapanana ya da süre dolana kadar bekler;
+    /// pencere olmayan (arka plan) işlemlere mesaj gönderilemeyeceği için <see cref="CloseOutcome.HadWindow"/> bunu söyler.
+    /// </summary>
+    public static async Task<CloseOutcome> CloseGracefullyAsync(string name)
     {
+        bool hadWindow = false;
         foreach (var p in Process.GetProcessesByName(name))
         {
-            try { p.CloseMainWindow(); } catch { }
+            try { hadWindow |= p.CloseMainWindow(); } catch { }
             p.Dispose();
         }
-        await Task.Delay(TimeSpan.FromSeconds(3));
-        return CommandRunner.CountProcesses(name);
+
+        var deadline = DateTime.UtcNow + GracePeriod;
+        int remaining = CommandRunner.CountProcesses(name);
+        while (remaining > 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(200);
+            remaining = CommandRunner.CountProcesses(name);
+        }
+        return new CloseOutcome(remaining, hadWindow);
     }
 
     public static void Kill(string name)

@@ -33,17 +33,24 @@ public sealed record CacheTask : ICleanupTask
     static string? FindFirstTool(string names) =>
         names.Split('|').Select(CommandRunner.FindOnPath).FirstOrDefault(p => p != null);
 
+    /// <summary>Kullanıcının hariç tuttuğu klasörler. Aracın kendi komutu bunların içini de silebileceği için bu tür önbelleklerde araç kullanılmaz.</summary>
+    public IReadOnlyCollection<string> Excluded { get; init; } = [];
+
+    /// <summary>Araç kurulu ve komutu çalıştırmak hariç tutulan bir klasöre dokunmaz.</summary>
+    bool ToolAvailable(CommandSource c) =>
+        FindTool(c.Executable) != null && !c.MeasurePaths.Any(p => Excluded.Any(e => FileCleaner.Overlaps(p, e)));
+
     bool Exists(CacheSource source) => source switch
     {
         FolderSource f => Directory.Exists(f.Path),
-        CommandSource c => FindTool(c.Executable) != null || (c.FolderFallback && c.MeasurePaths.Any(Directory.Exists)),
+        CommandSource c => ToolAvailable(c) || (c.FolderFallback && c.MeasurePaths.Any(Directory.Exists)),
         _ => false,
     };
 
-    static long Measure(CacheSource source) => source switch
+    long Measure(CacheSource source) => source switch
     {
-        FolderSource f => FileCleaner.Measure(f.Path, f.MinAge),
-        CommandSource c => c.MeasurePaths.Sum(p => FileCleaner.Measure(p)),
+        FolderSource f => FileCleaner.Measure(f.Path, f.MinAge, Excluded),
+        CommandSource c => c.MeasurePaths.Sum(p => FileCleaner.Measure(p, default, Excluded)),
         _ => 0,
     };
 
@@ -83,13 +90,13 @@ public sealed record CacheTask : ICleanupTask
             switch (source)
             {
                 case FolderSource f:
-                    entries.AddRange(FileCleaner.Preview(f.Path, f.MinAge));
+                    entries.AddRange(FileCleaner.Preview(f.Path, f.MinAge, Excluded));
                     break;
-                case CommandSource c when FindTool(c.Executable) != null:
+                case CommandSource c when ToolAvailable(c):
                     entries.Add(new PreviewEntry(c.Display, Measure(c), 0, IsCommand: true));
                     break;
-                case CommandSource c:
-                    foreach (var path in c.MeasurePaths) entries.AddRange(FileCleaner.Preview(path));
+                case CommandSource c when c.FolderFallback:
+                    foreach (var path in c.MeasurePaths) entries.AddRange(FileCleaner.Preview(path, default, Excluded));
                     break;
             }
         }
@@ -122,10 +129,10 @@ public sealed record CacheTask : ICleanupTask
                     switch (source)
                     {
                         case FolderSource f:
-                            total.Add(await Task.Run(() => FileCleaner.Clean(f.Path, f.MinAge, offset, ct)));
+                            total.Add(await Task.Run(() => FileCleaner.Clean(f.Path, f.MinAge, offset, ct, Excluded)));
                             break;
 
-                        case CommandSource c when FindTool(c.Executable) is { } tool:
+                        case CommandSource c when ToolAvailable(c) && FindTool(c.Executable) is { } tool:
                             long before = await Task.Run(() => Measure(c));
                             var (exit, _) = await RunToolAsync(tool, c, ct);
                             long freed = Math.Max(0, before - await Task.Run(() => Measure(c)));
@@ -135,9 +142,9 @@ public sealed record CacheTask : ICleanupTask
                             else if (exit != 0) failed.Add(app.Name);
                             break;
 
-                        case CommandSource c:
+                        case CommandSource c when c.FolderFallback:
                             foreach (var path in c.MeasurePaths)
-                                total.Add(await Task.Run(() => FileCleaner.Clean(path, default, new OffsetProgress(progress, total.Deleted, total.Freed), ct)));
+                                total.Add(await Task.Run(() => FileCleaner.Clean(path, default, new OffsetProgress(progress, total.Deleted, total.Freed), ct, Excluded)));
                             break;
                     }
                 }

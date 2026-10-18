@@ -60,7 +60,7 @@ public class SystemInfoTests
     [InlineData(new byte[] { 3, 0, 0 }, true)]
     [InlineData(new byte[] { 7, 0, 0 }, true)]
     public void StartupApprovedFlag_OddFirstByteMeansDisabled(byte[]? data, bool disabled) =>
-        Assert.Equal(disabled, SystemInfo.IsDisabledFlag(data));
+        Assert.Equal(disabled, StartupService.IsDisabledFlag(data));
 
     [Fact]
     public void Snapshot_ReturnsPlausibleValues()

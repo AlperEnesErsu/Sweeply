@@ -46,20 +46,25 @@
                             <Border x:Name="Row" Padding="0,8" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel>
+                                    <CheckBox x:Name="Check" IsChecked="{Binding IsChecked}" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                    <StackPanel Grid.Column="1">
                                         <TextBlock x:Name="Primary" Text="{Binding Primary}" TextTrimming="CharacterEllipsis"
                                                    ToolTip="{Binding Primary}" />
                                         <TextBlock Text="{Binding Secondary}" Style="{StaticResource OptionalLine}"
                                                    Foreground="{StaticResource Muted}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                                     </StackPanel>
-                                    <TextBlock x:Name="Right" Grid.Column="1" Text="{Binding Right}" Margin="16,0,0,0"
+                                    <TextBlock x:Name="Right" Grid.Column="2" Text="{Binding Right}" Margin="16,0,0,0"
                                                Typography.NumeralAlignment="Tabular" VerticalAlignment="Top" />
                                 </Grid>
                             </Border>
                             <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding HasCheck}" Value="False">
+                                    <Setter TargetName="Check" Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding IsHeader}" Value="True">
                                     <Setter TargetName="Row" Property="Padding" Value="0,18,0,8" />
                                     <Setter TargetName="Primary" Property="FontWeight" Value="SemiBold" />

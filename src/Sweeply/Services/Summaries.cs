@@ -23,6 +23,15 @@ public static class Summaries
         : !analysis.Available && analysis.Bytes == 0 ? "—"
         : Format.Bytes(analysis.Bytes);
 
+    /// <summary>Çalışan görev satırı: "Geçici dosyalar (2/5)".</summary>
+    public static string Running(string title, int index, int count) => $"{title} ({index + 1}/{count})";
+
+    /// <summary>Görev içi ilerleme: dosya sayısı yalnızca biliniyorsa gösterilir.</summary>
+    public static string Progress(string title, CleanProgress p) =>
+        p.Files > 0
+            ? $"{title} · {p.Files:N0} dosya · {Format.Bytes(p.Bytes)}"
+            : $"{title} · {Format.Bytes(p.Bytes)}";
+
     public static string SelectionSub(int selectedCount) =>
         selectedCount == 0
             ? "Temizlemek için en az bir görev seçin."

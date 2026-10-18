@@ -19,6 +19,8 @@ public partial class MainWindow : Window
     readonly ObservableCollection<ProcessGroup> _processes = new();
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(3) };
     readonly bool _autoRun;
+    readonly HealthHistory _history = new();
+    readonly AppSettings _settings = AppSettings.Load();
     CancellationTokenSource? _cts;
     bool _busy;
     bool _showingResult;
@@ -29,12 +31,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _autoRun = autoRun;
 
-        foreach (var job in Catalog.All())
-        {
-            var item = new CleanupItem(job);
-            item.PropertyChanged += OnItemChanged;
-            _items.Add(item);
-        }
+        BuildTasks();
 
         // Görevler katalogda zaten grup sırasıyla dizili; başlıklar ilk görünüş sırasını izler.
         var view = CollectionViewSource.GetDefaultView(_items);
@@ -60,6 +57,13 @@ public partial class MainWindow : Window
     }
 
     Brush Res(string key) => (Brush)FindResource(key);
+
+    /// <summary>Kapanırken geçmişi diske yazar; en fazla 10 dakikalık aralık bundan kaybı sınırlar.</summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        _history.Save(DateTime.Now);
+        base.OnClosed(e);
+    }
 
     async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -88,8 +92,32 @@ public partial class MainWindow : Window
 
     List<CleanupItem> Selected() => _items.Where(i => i.IsEnabled && i.IsAvailable).ToList();
 
+    /// <summary>Katalogdan görevleri kurar. Son seçim ayarlardan okunur; yoksa her görevin varsayılanı kullanılır.</summary>
+    void BuildTasks()
+    {
+        foreach (var item in _items) item.PropertyChanged -= OnItemChanged;
+        _items.Clear();
+
+        foreach (var job in Catalog.All(_settings))
+        {
+            var item = new CleanupItem(job)
+            {
+                IsEnabled = _settings.SelectedTasks?.Contains(job.Title) ?? job.EnabledByDefault,
+            };
+            item.PropertyChanged += OnItemChanged;
+            _items.Add(item);
+        }
+    }
+
     void OnItemChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(CleanupItem.IsEnabled))
+        {
+            // Seçim her değiştiğinde kaydedilir; bir sonraki açılışta aynı görevler işaretli gelir.
+            _settings.SelectedTasks = _items.Where(i => i.IsEnabled).Select(i => i.Job.Title).ToList();
+            _settings.Save();
+        }
+
         if (e.PropertyName is nameof(CleanupItem.IsEnabled) or nameof(CleanupItem.IsAvailable) or nameof(CleanupItem.Bytes))
             UpdateSelection();
     }
@@ -119,7 +147,12 @@ public partial class MainWindow : Window
         DiskLabel.Text = $"Disk {s.DiskName}";
         DiskText.Text = $"{Format.Bytes(s.DiskFree)} boş";
         DiskBar.Value = s.DiskUsedPercent;
-        ShowNote(DiskBar, DiskSub, HealthTips.Disk(s), $"{Format.Bytes(s.DiskTotal)} kapasite");
+        var now = DateTime.Now;
+        _history.Record(s.DiskUsedPercent, s.RamLoad, now);
+        // Anlık "dolu" uyarısı, eğilim uyarısından önce gelir: ikisi de varsa dolu olan öne çıkar.
+        ShowNote(DiskBar, DiskSub,
+            HealthTips.Disk(s) ?? HealthTips.DiskTrend(_history.Samples, DateOnly.FromDateTime(now)),
+            $"{Format.Bytes(s.DiskTotal)} kapasite");
 
         UptimeText.Text = Format.Duration(s.Uptime);
         ShowNote(null, UptimeSub, HealthTips.Uptime(s), s.FastStartup ? "Hızlı Başlangıç açık" : "açılış geçmişi için tıklayın");
@@ -138,7 +171,8 @@ public partial class MainWindow : Window
 
     async Task RefreshProcessesAsync()
     {
-        var top = await Task.Run(() => ProcessService.GetTop(12));
+        var extra = _settings.ProtectedProcesses.ToList();
+        var top = await Task.Run(() => ProcessService.GetTop(12, extra));
         _processes.Clear();
         foreach (var p in top) _processes.Add(p);
     }
@@ -201,7 +235,7 @@ public partial class MainWindow : Window
 
             item.State = ItemState.Running;
             item.Status = "temizleniyor…";
-            HeadlineSub.Text = $"{item.Title} ({i + 1}/{queue.Count})";
+            HeadlineSub.Text = Summaries.Running(item.Title, i, queue.Count);
 
             // Görev bittikten sonra kuyrukta kalan ilerleme bildirimleri sonucu ezmesin diye.
             bool live = true;
@@ -210,9 +244,7 @@ public partial class MainWindow : Window
             {
                 if (!live) return;
                 if (item.Job.Kind == TaskKind.Disk) HeadlineValue.Text = Format.Bytes(diskBefore + p.Bytes);
-                HeadlineSub.Text = p.Files > 0
-                    ? $"{item.Title} · {p.Files:N0} dosya · {Format.Bytes(p.Bytes)}"
-                    : $"{item.Title} · {Format.Bytes(p.Bytes)}";
+                HeadlineSub.Text = Summaries.Progress(item.Title, p);
             });
 
             try
@@ -308,25 +340,31 @@ public partial class MainWindow : Window
 
     void StartupButton_Click(object sender, RoutedEventArgs e)
     {
-        var items = SystemInfo.GetStartupItems();
-        var rows = items.Select(i => new ListRow(i.Name, $"{i.Source} · {i.Command}")).ToList();
+        // Devre dışı öğeler de listelenir ki yeniden etkinleştirilebilsin; sayaç yalnızca etkin olanları sayar.
+        var items = StartupService.GetItems(includeDisabled: true);
+        var rows = items.Select(i => new ListRow(i.Name, $"{i.Source} · {i.Command}") { IsChecked = i.Enabled }).ToList();
         if (rows.Count == 0) rows.Add(new ListRow("Açılışta çalışan program yok"));
 
-        bool open = ListDialog.Show(this, "Başlangıç programları",
-            $"Windows açılırken {items.Count} program çalışıyor. Her biri açılışı ve RAM'i biraz daha yavaşlatır.",
+        bool apply = ListDialog.Show(this, "Başlangıç programları",
+            $"Windows açılırken {items.Count(i => i.Enabled)} program çalışıyor. İşaretini kaldırdığınız program açılışta çalışmaz; silinmez.",
             rows,
-            "Kapatmak için Görev Yöneticisi → Başlangıç uygulamaları.",
-            "Görev Yöneticisi'ni aç");
-        if (!open) return;
+            "Değişiklikler hemen uygulanır ve Görev Yöneticisi'nde de aynı görünür.",
+            "Uygula");
+        if (!apply) return;
 
-        try
+        var failed = new List<string>();
+        for (int i = 0; i < items.Count; i++)
         {
-            Process.Start(new ProcessStartInfo("taskmgr.exe", "/0 /startup") { UseShellExecute = true });
+            bool wanted = rows[i].IsChecked == true;
+            if (wanted == items[i].Enabled) continue;
+            if (!StartupService.SetEnabled(items[i], wanted)) failed.Add(items[i].Name);
         }
-        catch (Exception ex)
-        {
-            Dialog.Show(this, "Görev Yöneticisi açılamadı", ex.Message, DialogKind.Error);
-        }
+
+        UpdateHealth();
+        if (failed.Count > 0)
+            Dialog.Show(this, "Bazı değişiklikler uygulanamadı",
+                $"{string.Join(", ", failed)} için yazma izni yok. Tüm bilgisayarı etkileyen öğeler için Sweeply'i yönetici olarak açın.",
+                DialogKind.Warning);
     }
 
     void UptimeButton_Click(object sender, RoutedEventArgs e)
@@ -387,6 +425,102 @@ public partial class MainWindow : Window
         await AnalyzeAsync();
     }
 
+    /// <summary>
+    /// Kendi temizlik klasörleri ve hariç tutulanlar. Bir satırın işaretini kaldırıp kapatmak o klasörü listeden çıkarır.
+    /// "Klasör ekle" klasörü seçtirir ve temizlenip temizlenmeyeceğini sorar; vazgeçilirse klasör hariç tutulur.
+    /// </summary>
+    async void FoldersButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+
+        var custom = _settings.CustomFolders.ToList();
+        var excluded = _settings.ExcludedFolders.ToList();
+        var customRows = custom.Select(f => new ListRow(f, "Temizlik klasörü · 24 saatten eski dosyalar") { IsChecked = true }).ToList();
+        var excludedRows = excluded.Select(f => new ListRow(f, "Hariç tutulan · hiçbir görev dokunmaz") { IsChecked = true }).ToList();
+        var rows = customRows.Concat(excludedRows).ToList();
+        if (rows.Count == 0) rows.Add(new ListRow("Henüz klasör eklenmedi"));
+
+        bool add = ListDialog.Show(this, "Temizlik klasörleri",
+            "Bir klasörün işaretini kaldırıp kapatırsanız listeden çıkar.",
+            rows,
+            "Klasör ekleyip temizlenmesini ya da hariç tutulmasını seçersiniz.",
+            "Klasör ekle");
+
+        // Kapatma düğmesiyle de olsa, işareti kaldırılanlar listeden çıkarılır.
+        _settings.CustomFolders = custom.Where((_, i) => customRows[i].IsChecked == true).ToList();
+        _settings.ExcludedFolders = excluded.Where((_, i) => excludedRows[i].IsChecked == true).ToList();
+
+        if (add)
+        {
+            var picker = new Microsoft.Win32.OpenFolderDialog { Title = "Temizlenecek ya da hariç tutulacak klasörü seçin" };
+            if (picker.ShowDialog(this) == true)
+            {
+                var path = Path.GetFullPath(picker.FolderName);
+                var error = FolderRules.Validate(path);
+                bool known = _settings.CustomFolders.Contains(path, StringComparer.OrdinalIgnoreCase)
+                             || _settings.ExcludedFolders.Contains(path, StringComparer.OrdinalIgnoreCase);
+
+                if (error != null)
+                    Dialog.Show(this, "Klasör eklenemedi", error, DialogKind.Warning);
+                else if (known)
+                    Dialog.Show(this, "Zaten ekli", "Bu klasör zaten listede.");
+                else if (Dialog.Confirm(this, "Bu klasör nasıl kullanılsın?",
+                             $"{path}\n\nTemizlensin: içindeki 24 saatten eski dosyalar silinir.\nHariç tut: hiçbir görev bu klasöre dokunmaz.",
+                             "Temizlensin", "Hariç tut"))
+                {
+                    _settings.CustomFolders.Add(path);
+                    // Yeni eklenen klasör bu oturumda hemen işaretli gelsin diye seçime de eklenir.
+                    // Seçim henüz kaydedilmediyse (varsayılanlar) önce mevcut durumdan başlanır; yoksa diğerleri sıfırlanırdı.
+                    _settings.SelectedTasks ??= _items.Where(i => i.IsEnabled).Select(i => i.Job.Title).ToList();
+                    if (!_settings.SelectedTasks.Contains("Kendi klasörlerim")) _settings.SelectedTasks.Add("Kendi klasörlerim");
+                }
+                else
+                {
+                    _settings.ExcludedFolders.Add(path);
+                }
+            }
+        }
+
+        _settings.Save();
+        BuildTasks();
+        UpdateSelection();
+        await AnalyzeAsync();
+    }
+
+    /// <summary>Haftalık otomatik temizliği açar veya kapatır (Görev Zamanlayıcı'daki görev).</summary>
+    async void ScheduleButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        ScheduleButton.IsEnabled = false;
+        try
+        {
+            if (await ScheduleService.IsScheduledAsync())
+            {
+                if (!Dialog.Confirm(this, "Otomatik temizlik kapatılsın mı?",
+                        "Zamanlanmış görev silinir. Sweeply'i elle açmaya devam edebilirsiniz.",
+                        "Kapat", kind: DialogKind.Warning))
+                    return;
+
+                var error = await ScheduleService.RemoveAsync();
+                if (error != null) Dialog.Show(this, "Kapatılamadı", error, DialogKind.Error);
+                return;
+            }
+
+            if (!Dialog.Confirm(this, "Haftalık otomatik temizlik açılsın mı?",
+                    $"Her pazar {ScheduleService.Time}'da seçili görevler onay sormadan çalışır. Neyin silineceğini önce \"Neler silinecek?\" ile görebilirsiniz. Yönetici izni gerektiren görevler bu zamanlamada çalışmaz.",
+                    "Zamanla"))
+                return;
+
+            var createError = await ScheduleService.CreateAsync(Environment.ProcessPath);
+            if (createError != null) Dialog.Show(this, "Zamanlanamadı", createError, DialogKind.Error);
+            else Dialog.Show(this, "Zamanlandı", $"Her pazar {ScheduleService.Time}'da Sweeply otomatik olarak açılır ve seçili görevleri çalıştırır.");
+        }
+        finally
+        {
+            ScheduleButton.IsEnabled = true;
+        }
+    }
+
     void ShortcutButton_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -410,12 +544,15 @@ public partial class MainWindow : Window
                 "Kapat"))
             return;
 
-        int remaining = await ProcessService.CloseGracefullyAsync(group.Name);
-        if (remaining > 0 && Dialog.Confirm(this, $"{group.Name} hâlâ açık",
-                $"{remaining} işlem kapanmadı. Zorla kapatırsanız kaydedilmemiş veriler kaybolabilir.",
-                "Zorla kapat", kind: DialogKind.Warning))
+        var outcome = await ProcessService.CloseGracefullyAsync(group.Name);
+        if (outcome.Remaining > 0)
         {
-            ProcessService.Kill(group.Name);
+            // Pencere olmayan bir işleme "kapan" mesajı ulaşmaz; bunu ayrıca söylemek kullanıcıyı yanıltmaz.
+            string message = outcome.HadWindow
+                ? $"{outcome.Remaining} işlem kapanmadı. Zorla kapatırsanız kaydedilmemiş veriler kaybolabilir."
+                : "Bu program pencere açmıyor, arka planda çalışıyor. Zorla kapatmak gerekebilir.";
+            if (Dialog.Confirm(this, $"{group.Name} hâlâ açık", message, "Zorla kapat", kind: DialogKind.Warning))
+                ProcessService.Kill(group.Name);
         }
 
         await Task.Delay(500);
