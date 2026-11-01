@@ -5,7 +5,9 @@ namespace Sweeply.Services;
 
 public static class CommandRunner
 {
-    public static async Task<(int ExitCode, string Output)> RunAsync(string fileName, string arguments, TimeSpan timeout, CancellationToken ct = default)
+    /// <param name="input">Verilirse işlemin standart girdisine yazılır ve girdi kapatılır (ör. diskpart komutları).</param>
+    public static async Task<(int ExitCode, string Output)> RunAsync(string fileName, string arguments, TimeSpan timeout,
+        CancellationToken ct = default, string? input = null)
     {
         var psi = new ProcessStartInfo(fileName, arguments)
         {
@@ -13,6 +15,7 @@ public static class CommandRunner
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = input != null,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
@@ -29,6 +32,15 @@ public static class CommandRunner
 
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
+        if (input != null)
+        {
+            try
+            {
+                await process.StandardInput.WriteAsync(input);
+                process.StandardInput.Close();
+            }
+            catch (IOException) { }  // işlem girdiyi okumadan kapandıysa çıkış kodu sonucu belirler
+        }
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(timeout);

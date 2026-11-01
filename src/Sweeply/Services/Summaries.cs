@@ -1,4 +1,5 @@
 using Sweeply.Controls;
+using Sweeply.Models;
 using Sweeply.Tasks;
 
 namespace Sweeply.Services;
@@ -79,6 +80,49 @@ public static class Summaries
                 rows.Add(new ListRow($"ve {rest.Count:N0} öğe daha", $"{rest.Sum(x => x.Files):N0} dosya", Format.Bytes(rest.Sum(x => x.Bytes))));
         }
         return (rows, total);
+    }
+
+    /// <summary>
+    /// Zamanlanmış temizliğin kaydı: seçili her görev, çalıştıysa sonucuyla, çalışmadıysa nedeniyle
+    /// (ör. yönetici izni gerektiği için) yer alır.
+    /// </summary>
+    public static RunLog ScheduledRunLog(IEnumerable<CleanupItem> items, long disk, long ram, bool cancelled, DateTime time) => new()
+    {
+        Time = time,
+        DiskFreed = disk,
+        RamFreed = ram,
+        Cancelled = cancelled,
+        Entries = items.Where(i => i.IsEnabled).Select(i => i.State switch
+        {
+            ItemState.Done => new RunLogEntry(i.Title, RunOutcome.Done, i.Status),
+            ItemState.Failed => new RunLogEntry(i.Title, RunOutcome.Failed, i.Status),
+            ItemState.Skipped => new RunLogEntry(i.Title, RunOutcome.Skipped, i.Status),
+            _ => new RunLogEntry(i.Title, RunOutcome.NotRun, i.Note ?? "Şu an çalıştırılamıyordu"),
+        }).ToList(),
+    };
+
+    static string OutcomeText(RunOutcome outcome) => outcome switch
+    {
+        RunOutcome.Done => "Tamamlandı",
+        RunOutcome.Failed => "Başarısız",
+        RunOutcome.Skipped => "Durduruldu",
+        _ => "Çalışmadı",
+    };
+
+    /// <summary>Son zamanlanmış temizliği gösteren pencerenin başlığı, açıklaması ve satırları.</summary>
+    public static (string Title, string Message, List<ListRow> Rows) RunLogSummary(RunLog log)
+    {
+        var parts = new List<string> { log.Time.ToString("dd MMMM dddd, HH:mm") };
+        parts.Add(log.DiskFreed > 0 ? $"{Format.Bytes(log.DiskFreed)} disk alanı açıldı" : "disk alanı açılmadı");
+        if (log.RamFreed > 0) parts.Add($"{Format.Bytes(log.RamFreed)} RAM boşaldı");
+        if (log.Cancelled) parts.Add("temizlik yarıda durduruldu");
+
+        int problems = log.Entries.Count(e => e.Outcome != RunOutcome.Done);
+        var rows = log.Entries.Select(e => new ListRow(e.Title, e.Message, OutcomeText(e.Outcome))).ToList();
+        if (rows.Count == 0) rows.Add(new ListRow("Seçili görev yoktu"));
+
+        return (problems > 0 ? $"Son otomatik temizlik · {problems} görev tamamlanmadı" : "Son otomatik temizlik",
+            string.Join(" · ", parts), rows);
     }
 
     /// <summary>Açılış geçmişi penceresinin başlığı ve açıklaması (en yeni açılış başta).</summary>

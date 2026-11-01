@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     readonly ObservableCollection<ProcessGroup> _processes = new();
     readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(3) };
     readonly bool _autoRun;
+    readonly bool _scheduled;
     readonly HealthHistory _history = new();
     readonly AppSettings _settings = AppSettings.Load();
     CancellationTokenSource? _cts;
@@ -26,10 +27,11 @@ public partial class MainWindow : Window
     bool _showingResult;
     int _tick;
 
-    public MainWindow(bool autoRun)
+    public MainWindow(bool autoRun, bool scheduled = false)
     {
         InitializeComponent();
         _autoRun = autoRun;
+        _scheduled = scheduled;
 
         BuildTasks();
 
@@ -73,7 +75,29 @@ public partial class MainWindow : Window
         _timer.Start();
 
         await AnalyzeAsync();
-        if (_autoRun) await SweepAsync();
+        if (_autoRun)
+        {
+            await SweepAsync(logRun: _scheduled);
+            return;
+        }
+
+        // Zamanlanmış temizlikte bu uyarılar beklemesin; kullanıcı bir sonraki açılışta görür.
+        if (_settings.LoadProblem != null)
+            Dialog.Show(this, "Ayarlar okunamadı", _settings.LoadProblem, DialogKind.Warning);
+        ShowUnseenRunLog();
+    }
+
+    /// <summary>Kullanıcı henüz görmediyse son zamanlanmış temizliğin sonucunu bir kez gösterir.</summary>
+    void ShowUnseenRunLog()
+    {
+        var log = RunLog.Load();
+        if (log == null || log.Seen) return;
+
+        var (title, message, rows) = Summaries.RunLogSummary(log);
+        log.Seen = true;
+        log.Save();
+        ListDialog.Show(this, title, message, rows,
+            "Bu özet bir kez gösterilir. Zamanlamayı üstteki \"Zamanlama\" ile değiştirebilirsiniz.");
     }
 
     /// <summary>Sadece açılışta: ölçümler ve görev grupları kısa aralıklarla sırayla belirir.</summary>
@@ -202,11 +226,17 @@ public partial class MainWindow : Window
         item.Estimate = Summaries.Estimate(analysis);
     }
 
-    async Task SweepAsync()
+    /// <param name="logRun">Zamanlanmış temizlikte true: sonuç, çalışmayan görevler dahil <see cref="RunLog"/>'a yazılır.</param>
+    async Task SweepAsync(bool logRun = false)
     {
         if (_busy) return;
         var queue = Selected();
-        if (queue.Count == 0) return;
+        if (queue.Count == 0)
+        {
+            // Hiçbir görev çalıştırılamasa da (ör. hepsi yönetici izni istiyor) kullanıcı bunu sonradan görebilmeli.
+            if (logRun) Summaries.ScheduledRunLog(_items, 0, 0, false, DateTime.Now).Save();
+            return;
+        }
 
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
@@ -273,6 +303,7 @@ public partial class MainWindow : Window
         RunProgress.Visibility = Visibility.Collapsed;
         _showingResult = true;
         ShowHeadline(Summaries.SweepResult(disk, ram, ct.IsCancellationRequested));
+        if (logRun) Summaries.ScheduledRunLog(_items, disk, ram, ct.IsCancellationRequested, DateTime.Now).Save();
         _cts.Dispose();
         _cts = null;
 
@@ -487,33 +518,46 @@ public partial class MainWindow : Window
         await AnalyzeAsync();
     }
 
-    /// <summary>Haftalık otomatik temizliği açar veya kapatır (Görev Zamanlayıcı'daki görev).</summary>
+    /// <summary>
+    /// Haftalık otomatik temizliği açar, gün/saatini değiştirir veya kapatır (Görev Zamanlayıcı'daki görev).
+    /// Pencere, onaysız çalışacak görevleri ve yönetici izni yüzünden atlanacakları listeler.
+    /// </summary>
     async void ScheduleButton_Click(object sender, RoutedEventArgs e)
     {
         if (_busy) return;
         ScheduleButton.IsEnabled = false;
         try
         {
-            if (await ScheduleService.IsScheduledAsync())
-            {
-                if (!Dialog.Confirm(this, "Otomatik temizlik kapatılsın mı?",
-                        "Zamanlanmış görev silinir. Sweeply'i elle açmaya devam edebilirsiniz.",
-                        "Kapat", kind: DialogKind.Warning))
-                    return;
+            bool scheduled = await ScheduleService.IsScheduledAsync();
+            var enabled = _items.Where(i => i.IsEnabled).ToList();
+            var tasks = enabled.Where(i => !i.Job.RequiresAdmin).Select(i => i.Title).ToList();
+            var skipped = enabled.Where(i => i.Job.RequiresAdmin).Select(i => i.Title).ToList();
 
+            var (choice, day, time) = ScheduleDialog.Show(this, scheduled, _settings.ScheduleDay,
+                ScheduleService.ParseTime(_settings.ScheduleTime) ?? ScheduleService.ParseTime(ScheduleService.DefaultTime)!.Value,
+                tasks, skipped);
+
+            if (choice == ScheduleChoice.Remove)
+            {
                 var error = await ScheduleService.RemoveAsync();
                 if (error != null) Dialog.Show(this, "Kapatılamadı", error, DialogKind.Error);
+                else Dialog.Show(this, "Otomatik temizlik kapatıldı", "Zamanlanmış görev silindi. Sweeply'i elle açmaya devam edebilirsiniz.");
+                return;
+            }
+            if (choice != ScheduleChoice.Save) return;
+
+            var createError = await ScheduleService.CreateAsync(Environment.ProcessPath, day, time);
+            if (createError != null)
+            {
+                Dialog.Show(this, "Zamanlanamadı", createError, DialogKind.Error);
                 return;
             }
 
-            if (!Dialog.Confirm(this, "Haftalık otomatik temizlik açılsın mı?",
-                    $"Her pazar {ScheduleService.Time}'da seçili görevler onay sormadan çalışır. Neyin silineceğini önce \"Neler silinecek?\" ile görebilirsiniz. Yönetici izni gerektiren görevler bu zamanlamada çalışmaz.",
-                    "Zamanla"))
-                return;
-
-            var createError = await ScheduleService.CreateAsync(Environment.ProcessPath);
-            if (createError != null) Dialog.Show(this, "Zamanlanamadı", createError, DialogKind.Error);
-            else Dialog.Show(this, "Zamanlandı", $"Her pazar {ScheduleService.Time}'da Sweeply otomatik olarak açılır ve seçili görevleri çalıştırır.");
+            _settings.ScheduleDay = day;
+            _settings.ScheduleTime = time.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+            _settings.Save();
+            Dialog.Show(this, "Zamanlandı",
+                $"Sweeply {ScheduleService.Describe(day, time)} otomatik olarak açılır ve seçili görevleri çalıştırır. Sonucu bir sonraki açılışta görürsünüz.");
         }
         finally
         {

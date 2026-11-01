@@ -24,7 +24,7 @@ public sealed class DockerBuildCacheTask : ICleanupTask
         if (info.ExitCode != 0) return new Analysis(false, 0, "Docker çalışmıyor; açıkken tekrar tarayın.");
 
         return new Analysis(true, await ReclaimableAsync(docker, ct),
-            "Alan Docker'ın sanal diskinde açılır; Windows'a geri vermek için README'deki sıkıştırma adımına bakın.");
+            "Alan Docker'ın sanal diskinde açılır; Windows'a geri vermek için \"Docker sanal diskini küçült\" görevini de seçin.");
     }
 
     static async Task<long> ReclaimableAsync(string docker, CancellationToken ct)

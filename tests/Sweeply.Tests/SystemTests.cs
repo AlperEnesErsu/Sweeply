@@ -177,6 +177,17 @@ public class CommandRunnerTests
     }
 
     [Fact]
+    public async Task Run_WritesInputToStdinAndClosesIt()
+    {
+        // findstr girdinin her satırını yazar ve girdi kapanınca çıkar; kapanmasaydı zaman aşımına düşerdi.
+        var (code, output) = await CommandRunner.RunAsync("findstr.exe", "\"^\"", TimeSpan.FromSeconds(10), input: "birinci\r\nikinci\r\n");
+
+        Assert.Equal(0, code);
+        Assert.Contains("birinci", output);
+        Assert.Contains("ikinci", output);
+    }
+
+    [Fact]
     public void FindOnPath_FindsSystemTools_AndReturnsNullForUnknown()
     {
         Assert.NotNull(CommandRunner.FindOnPath("cmd.exe"));
