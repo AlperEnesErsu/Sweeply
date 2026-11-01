@@ -228,6 +228,40 @@
             </Setter>
         </Style>
 
+        <!-- Seçenek çipi (gün, saat): seçili olan açık renk dolar -->
+        <Style x:Key="Chip" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource Muted}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Padding" Value="11,6" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Root" CornerRadius="6" BorderThickness="1" BorderBrush="{StaticResource Line}"
+                                Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Text}" />
+                                <Setter TargetName="Root" Property="Background" Value="#1F1F23" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#8E8E96" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground" Value="#111113" />
+                                <Setter TargetName="Root" Property="Background" Value="#EDEDEF" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#EDEDEF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 3px ölçüm çubuğu -->
         <Style x:Key="Bar" TargetType="ProgressBar">
             <Setter Property="Height" Value="3" />

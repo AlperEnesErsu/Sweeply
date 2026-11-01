@@ -32,6 +32,7 @@ public static class Catalog
             Temp(r), CrashDumps(r), WindowsUpdate(r), DeliveryOptimization(r),
             Browsers(r), AppCaches(r), Spotify(r),
             DevCaches(r), PackageStores(r), new DockerBuildCacheTask(),
+            new DockerDiskCompactTask { Disks = () => DockerDiskCompactTask.DefaultDisks(r.Local) },
             new WslShutdownTask(),
         };
 

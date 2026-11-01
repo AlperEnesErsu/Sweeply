@@ -10,6 +10,8 @@ public partial class App : Application
 
         // Masaüstü kısayolu uygulamayı --auto ile açar: pencere açılır açılmaz optimizasyon başlar.
         bool autoRun = e.Args.Any(a => a.Equals("--auto", StringComparison.OrdinalIgnoreCase));
-        new MainWindow(autoRun).Show();
+        // Görev Zamanlayıcı ayrıca --scheduled verir: sonuç, kullanıcı başında olmasa da görebilsin diye kaydedilir.
+        bool scheduled = autoRun && e.Args.Any(a => a.Equals(Services.ScheduleService.ScheduledFlag, StringComparison.OrdinalIgnoreCase));
+        new MainWindow(autoRun, scheduled).Show();
     }
 }

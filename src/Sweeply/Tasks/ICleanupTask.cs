@@ -31,6 +31,9 @@ public interface ICleanupTask
     TaskGroup Group { get; }
     bool EnabledByDefault { get; }
 
+    /// <summary>Yönetici izni olmadan çalışmaz; bu yüzden zamanlanmış (yönetici olmayan) temizlikte atlanır.</summary>
+    bool RequiresAdmin => false;
+
     Task<Analysis> AnalyzeAsync(CancellationToken ct);
 
     /// <summary>Hiçbir şeyi silmeden, çalıştırılınca neyin silineceğini listeler.</summary>

@@ -39,7 +39,7 @@
                         </StackPanel>
                     </Button>
                     <Button x:Name="ScheduleButton" Style="{StaticResource TextButton}" Click="ScheduleButton_Click" Margin="0,0,2,0"
-                            AutomationProperties.Name="Haftalık otomatik temizlik" ToolTip="Her pazar 10:00'da seçili görevleri otomatik çalıştırır">
+                            AutomationProperties.Name="Haftalık otomatik temizlik" ToolTip="Seçili görevleri haftada bir, seçtiğiniz gün ve saatte otomatik çalıştırır">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE916;" Style="{StaticResource Icon}" FontSize="12" Margin="0,0,7,0" />
                             <TextBlock x:Name="ScheduleLabel" Text="Zamanlama" />
